@@ -1,0 +1,87 @@
+You are a SENIOR FULL-STACK SOFTWARE ARCHITECT with real experience in ERP / CRM systems for retail chains.
+
+Your task is to DESIGN and PLAN a FULL MANAGEMENT SYSTEM for OPTICAL STORES based STRICTLY on the following Functional Requirements Document (TZZ).  
+You MUST NOT invent features that are not explicitly mentioned.  
+You MUST think like a real software architect working for a paying client.
+
+SYSTEM TYPE:
+• Multi-branch Optical Store CRM / ERP
+• Modules: CRM, Inventory, Sales, Finance, KPI, Analytics
+• Real business logic, no demo or toy examples
+
+YOUR OUTPUT MUST INCLUDE ALL SECTIONS BELOW:
+
+━━━━━━━━━━━━━━━━━━━
+1. SYSTEM ARCHITECTURE
+━━━━━━━━━━━━━━━━━━━
+• High-level architecture (Frontend, Backend, Database)
+• Recommended technologies (React/Next, Node/Nest or Django, PostgreSQL)
+• Authentication & role-based access control
+
+━━━━━━━━━━━━━━━━━━━
+2. DATABASE DESIGN
+━━━━━━━━━━━━━━━━━━━
+• Complete list of tables
+• Fields with data types
+• Primary & foreign keys
+• Relationships between tables
+• Explain why this structure fits optical business logic
+
+━━━━━━━━━━━━━━━━━━━
+3. CORE BUSINESS LOGIC
+━━━━━━━━━━━━━━━━━━━
+• Client management with eye-prescription history (SPH, CYL, AXIS, PD)
+• Inventory auto-update on sales, returns, and branch transfers
+• Multi-product sales with discounts and payment types
+• Employee KPI calculation and salary/bonus logic
+• Profit & loss calculation based on income and expenses
+
+━━━━━━━━━━━━━━━━━━━
+4. USER ROLES & PERMISSIONS
+━━━━━━━━━━━━━━━━━━━
+• Admin
+• Branch Manager
+• Sales Employee
+• Accountant (if applicable)
+• Exact permissions for each role
+
+━━━━━━━━━━━━━━━━━━━
+5. API DESIGN
+━━━━━━━━━━━━━━━━━━━
+• REST API endpoints grouped by module
+• Example request/response structures
+• Error handling strategy
+
+━━━━━━━━━━━━━━━━━━━
+6. FRONTEND STRUCTURE
+━━━━━━━━━━━━━━━━━━━
+• Admin panel pages
+• Dashboard widgets
+• Forms and tables needed for daily work
+• UX logic optimized for real staff usage
+
+━━━━━━━━━━━━━━━━━━━
+7. ANALYTICS & REPORTING
+━━━━━━━━━━━━━━━━━━━
+• Daily / weekly / monthly reports
+• Best-selling products
+• Low-stock alerts
+• Top employees and branches
+
+━━━━━━━━━━━━━━━━━━━
+8. DEVELOPMENT ROADMAP
+━━━━━━━━━━━━━━━━━━━
+• Step-by-step development phases
+• MVP vs Full Version
+• Estimated timelines for a solo full-stack developer
+
+━━━━━━━━━━━━━━━━━━━
+IMPORTANT RULES:
+━━━━━━━━━━━━━━━━━━━
+• Follow the provided TZZ exactly
+• Do NOT add extra features
+• Think like a production-ready system
+• Use clear tables and structured output
+• Assume the system will be used by REAL optical stores
+
+If something is ambiguous, make a professional assumption and clearly label it.
