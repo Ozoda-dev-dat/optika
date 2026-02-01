@@ -197,20 +197,29 @@ export class DatabaseStorage implements IStorage {
         branchId: input.branchId,
         clientId: input.clientId,
         userId: userId,
-        totalAmount: totalAmount.toString(),
-        discount: input.discount.toString(),
+        totalAmount: totalAmount.toFixed(2),
+        discount: input.discount.toFixed(2),
         paymentMethod: input.paymentMethod,
       }).returning();
 
-      // 3. Create Sale Items and Update Inventory
+      // 3. Create Sale Items, Inventory Audit, and Update Inventory
       for (const item of input.items) {
         await tx.insert(saleItems).values({
           saleId: sale.id,
           productId: item.productId,
           quantity: item.quantity,
-          price: item.price.toString(),
-          total: ((item.price * item.quantity) - item.discount).toString(),
-          discount: item.discount.toString(),
+          price: item.price.toFixed(2),
+          total: ((item.price * item.quantity) - item.discount).toFixed(2),
+          discount: item.discount.toFixed(2),
+        });
+
+        // Audit Log
+        await tx.insert(inventoryMovements).values({
+          productId: item.productId,
+          fromBranchId: input.branchId,
+          quantity: item.quantity,
+          type: 'sale',
+          userId: userId,
         });
 
         // Update inventory (decrement)
@@ -222,6 +231,74 @@ export class DatabaseStorage implements IStorage {
       }
 
       return sale;
+    });
+  }
+
+  async processReturn(userId: string, saleId: number, reason: string): Promise<SaleReturn> {
+    return await db.transaction(async (tx) => {
+      const [sale] = await tx.select().from(sales).where(eq(sales.id, saleId));
+      if (!sale) throw new Error("Sale not found");
+      if (sale.status === 'returned') throw new Error("Sale already returned");
+
+      const items = await tx.select().from(saleItems).where(eq(saleItems.saleId, saleId));
+
+      // 1. Update Sale Status
+      await tx.update(sales).set({ status: 'returned' }).where(eq(sales.id, saleId));
+
+      // 2. Log Return
+      const [saleReturn] = await tx.insert(saleReturns).values({
+        saleId,
+        userId,
+        reason,
+        totalRefunded: sale.totalAmount,
+      }).returning();
+
+      // 3. Restore Inventory and Log Movement
+      for (const item of items) {
+        await tx.insert(inventoryMovements).values({
+          productId: item.productId,
+          toBranchId: sale.branchId,
+          quantity: item.quantity,
+          type: 'return',
+          userId,
+        });
+
+        await tx.execute(sql`
+          UPDATE inventory 
+          SET quantity = quantity + ${item.quantity} 
+          WHERE product_id = ${item.productId} AND branch_id = ${sale.branchId}
+        `);
+      }
+
+      return saleReturn;
+    });
+  }
+
+  async transferInventory(userId: string, productId: number, fromBranchId: number, toBranchId: number, quantity: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      // 1. Check stock
+      const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, fromBranchId)));
+      if (!stock || stock.quantity < quantity) throw new Error("Insufficient stock");
+
+      // 2. Audit Log
+      await tx.insert(inventoryMovements).values({
+        productId,
+        fromBranchId,
+        toBranchId,
+        quantity,
+        type: 'transfer',
+        userId,
+      });
+
+      // 3. Update Inventory
+      await tx.execute(sql`UPDATE inventory SET quantity = quantity - ${quantity} WHERE id = ${stock.id}`);
+      
+      const [destStock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, toBranchId)));
+      if (destStock) {
+        await tx.execute(sql`UPDATE inventory SET quantity = quantity + ${quantity} WHERE id = ${destStock.id}`);
+      } else {
+        await tx.insert(inventory).values({ productId, branchId: toBranchId, quantity });
+      }
     });
   }
 

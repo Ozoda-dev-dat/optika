@@ -17,7 +17,7 @@ export const branches = pgTable("branches", {
 
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(), // Frames, Lenses, Sunglasses, Accessories, Services
+  name: text("name").notNull().unique(),
   slug: text("slug").notNull().unique(),
 });
 
@@ -28,8 +28,8 @@ export const products = pgTable("products", {
   categoryId: integer("category_id").references(() => categories.id).notNull(),
   brand: text("brand"),
   model: text("model"),
-  price: decimal("price", { precision: 12, scale: 2 }).notNull(), // Sale price
-  costPrice: decimal("cost_price", { precision: 12, scale: 2 }).notNull(), // Purchase price
+  price: decimal("price", { precision: 12, scale: 2 }).notNull(),
+  costPrice: decimal("cost_price", { precision: 12, scale: 2 }).notNull(),
   imageUrl: text("image_url"),
 });
 
@@ -40,13 +40,25 @@ export const inventory = pgTable("inventory", {
   quantity: integer("quantity").notNull().default(0),
 });
 
+// TZZ: Audit logs for inventory movements
+export const inventoryMovements = pgTable("inventory_movements", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").references(() => products.id).notNull(),
+  fromBranchId: integer("from_branch_id").references(() => branches.id),
+  toBranchId: integer("to_branch_id").references(() => branches.id),
+  quantity: integer("quantity").notNull(),
+  type: text("type").notNull(), // 'sale', 'return', 'transfer', 'adjustment'
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   phone: text("phone").notNull(),
   birthDate: date("birth_date"),
-  passport: text("passport"), // Optional
+  passport: text("passport"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -56,31 +68,26 @@ export const prescriptions = pgTable("prescriptions", {
   clientId: integer("client_id").references(() => clients.id).notNull(),
   doctorName: text("doctor_name"),
   date: timestamp("date").defaultNow(),
-  
-  // Right Eye (OD)
   sphRight: text("sph_right"),
   cylRight: text("cyl_right"),
   axisRight: text("axis_right"),
   pdRight: text("pd_right"),
-  
-  // Left Eye (OS)
   sphLeft: text("sph_left"),
   cylLeft: text("cyl_left"),
   axisLeft: text("axis_left"),
   pdLeft: text("pd_left"),
-  
   notes: text("notes"),
 });
 
 export const sales = pgTable("sales", {
   id: serial("id").primaryKey(),
   branchId: integer("branch_id").references(() => branches.id).notNull(),
-  clientId: integer("client_id").references(() => clients.id), // Optional for walk-ins
-  userId: varchar("user_id").references(() => users.id).notNull(), // Seller
+  clientId: integer("client_id").references(() => clients.id),
+  userId: varchar("user_id").references(() => users.id).notNull(),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 12, scale: 2 }).default("0"),
-  paymentMethod: text("payment_method").notNull(), // cash, card, click, payme, transfer
-  status: text("status").default("completed"), // completed, refunded
+  paymentMethod: text("payment_method").notNull(),
+  status: text("status").default("completed"), // 'completed', 'returned'
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -89,8 +96,19 @@ export const saleItems = pgTable("sale_items", {
   saleId: integer("sale_id").references(() => sales.id).notNull(),
   productId: integer("product_id").references(() => products.id).notNull(),
   quantity: integer("quantity").notNull(),
-  price: decimal("price", { precision: 12, scale: 2 }).notNull(), // Price at moment of sale
+  price: decimal("price", { precision: 12, scale: 2 }).notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
+  discount: decimal("discount", { precision: 12, scale: 2 }).default("0"),
+});
+
+// TZZ: Returns/Refunds tracking
+export const saleReturns = pgTable("sale_returns", {
+  id: serial("id").primaryKey(),
+  saleId: integer("sale_id").references(() => sales.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  reason: text("reason"),
+  totalRefunded: decimal("total_refunded", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const expenses = pgTable("expenses", {
@@ -98,7 +116,7 @@ export const expenses = pgTable("expenses", {
   branchId: integer("branch_id").references(() => branches.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
-  category: text("category").notNull(), // rent, salary, utilities, other
+  category: text("category").notNull(),
   description: text("description"),
   date: timestamp("date").defaultNow(),
 });
@@ -118,6 +136,7 @@ export const productsRelations = relations(products, ({ one, many }) => ({
   }),
   inventory: many(inventory),
   saleItems: many(saleItems),
+  movements: many(inventoryMovements),
 }));
 
 export const inventoryRelations = relations(inventory, ({ one }) => ({
@@ -150,17 +169,7 @@ export const salesRelations = relations(sales, ({ one, many }) => ({
     references: [users.id],
   }),
   items: many(saleItems),
-}));
-
-export const saleItemsRelations = relations(saleItems, ({ one }) => ({
-  sale: one(sales, {
-    fields: [saleItems.saleId],
-    references: [sales.id],
-  }),
-  product: one(products, {
-    fields: [saleItems.productId],
-    references: [products.id],
-  }),
+  returns: many(saleReturns),
 }));
 
 // === INSERT SCHEMAS ===
@@ -174,9 +183,10 @@ export const insertPrescriptionSchema = createInsertSchema(prescriptions).omit({
 export const insertSaleSchema = createInsertSchema(sales).omit({ id: true, createdAt: true });
 export const insertSaleItemSchema = createInsertSchema(saleItems).omit({ id: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, date: true });
+export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({ id: true, createdAt: true });
+export const insertSaleReturnSchema = createInsertSchema(saleReturns).omit({ id: true, createdAt: true });
 
 // === API TYPES ===
-
 export type Branch = typeof branches.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Product = typeof products.$inferSelect;
@@ -186,22 +196,18 @@ export type Prescription = typeof prescriptions.$inferSelect;
 export type Sale = typeof sales.$inferSelect;
 export type SaleItem = typeof saleItems.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
+export type InventoryMovement = typeof inventoryMovements.$inferSelect;
+export type SaleReturn = typeof saleReturns.$inferSelect;
 
-export type ProductWithCategory = Product & { category: Category };
-export type InventoryWithProduct = Inventory & { product: ProductWithCategory; branch: Branch };
-export type SaleWithDetails = Sale & { client: Client | null; user: User; items: (SaleItem & { product: Product })[] };
-
-export const SaleInputSchema = z.object({
-  clientId: z.number().optional(),
-  branchId: z.number(),
-  items: z.array(z.object({
-    productId: z.number(),
-    quantity: z.number(),
-    price: z.number(), // Override price or use standard
-    discount: z.number().default(0),
-  })),
-  paymentMethod: z.enum(["cash", "card", "click", "payme", "transfer"]),
-  discount: z.number().default(0),
-});
-
-export type SaleInput = z.infer<typeof SaleInputSchema>;
+export type SaleInput = {
+  clientId?: number;
+  branchId: number;
+  items: {
+    productId: number;
+    quantity: number;
+    price: number;
+    discount: number;
+  }[];
+  paymentMethod: string;
+  discount: number;
+};
