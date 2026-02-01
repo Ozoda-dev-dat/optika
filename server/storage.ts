@@ -66,6 +66,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
   // Branches
   async getBranches(): Promise<Branch[]> {
     return await db.select().from(branches);

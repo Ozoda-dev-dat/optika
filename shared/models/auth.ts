@@ -15,13 +15,14 @@ export const sessions = pgTable(
 // User storage table.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
+  username: varchar("username").unique().notNull(),
+  password: text("password").notNull(),
+  email: varchar("email"),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  // App specific fields
-  role: text("role").default("sales").notNull(), // admin, manager, sales, accountant
-  branchId: integer("branch_id"), // Link to branches table (defined in schema.ts, but we can't circular ref easily here, so just int)
+  role: text("role").default("sales").notNull(),
+  branchId: integer("branch_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -156,6 +156,15 @@ async function seedDatabase() {
   if (cats.length === 0) {
     console.log("Seeding database...");
     
+    // Admin user
+    await storage.upsertUser({
+      id: "admin-id",
+      username: "admin",
+      password: "admin123",
+      role: "admin",
+      firstName: "Admin",
+      lastName: "User"
+    });
     // Categories
     const frame = await storage.createCategory({ name: "Oprava (Ramkalar)", slug: "frames" });
     const lens = await storage.createCategory({ name: "Linzalar", slug: "lenses" });
