@@ -111,6 +111,19 @@ export const saleReturns = pgTable("sale_returns", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const SaleInputSchema = z.object({
+  clientId: z.number().optional(),
+  branchId: z.number(),
+  items: z.array(z.object({
+    productId: z.number(),
+    quantity: z.number(),
+    price: z.number(),
+    discount: z.number().default(0),
+  })),
+  paymentMethod: z.enum(["cash", "card", "click", "payme", "transfer"]),
+  discount: z.number().default(0),
+});
+
 export const expenses = pgTable("expenses", {
   id: serial("id").primaryKey(),
   branchId: integer("branch_id").references(() => branches.id).notNull(),
