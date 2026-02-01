@@ -1,7 +1,8 @@
 import { 
   users, branches, products, inventory, clients, prescriptions, sales, saleItems, expenses, categories,
+  inventoryMovements, saleReturns, employeeKpi,
   type User, type InsertUser, type Branch, type Product, type Inventory, type Client, type Prescription, type Sale, type SaleItem, type Expense,
-  type UpsertUser,
+  type UpsertUser, type InventoryMovement, type SaleReturn, type EmployeeKpi,
   SaleInput
 } from "@shared/schema";
 import { db } from "./db";
@@ -14,16 +15,17 @@ export interface IStorage extends IAuthStorage {
   createBranch(branch: typeof branches.$inferInsert): Promise<Branch>;
   
   // Categories
-  getCategories(): Promise<typeof categories.$inferSelect[]>;
-  createCategory(category: typeof categories.$inferInsert): Promise<typeof categories.$inferSelect>;
+  getCategories(): Promise<Category[]>;
+  createCategory(category: typeof categories.$inferInsert): Promise<Category>;
 
   // Products
-  getProducts(categoryId?: number, search?: string): Promise<(Product & { category: typeof categories.$inferSelect })[]>;
+  getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category })[]>;
   createProduct(product: typeof products.$inferInsert): Promise<Product>;
   
   // Inventory
   getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product, branch: Branch })[]>;
   updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void>;
+  transferInventory(userId: string, productId: number, fromBranchId: number, toBranchId: number, quantity: number): Promise<void>;
 
   // Clients
   getClients(search?: string): Promise<Client[]>;
@@ -35,6 +37,7 @@ export interface IStorage extends IAuthStorage {
   // Sales
   createSale(userId: string, input: SaleInput): Promise<Sale>;
   getSales(options: { startDate?: Date, endDate?: Date, branchId?: number }): Promise<(Sale & { client: Client | null, user: User, items: (SaleItem & { product: Product })[] })[]>;
+  processReturn(userId: string, saleId: number, reason: string): Promise<SaleReturn>;
 
   // Expenses
   getExpenses(options: { startDate?: Date, endDate?: Date }): Promise<Expense[]>;
@@ -82,31 +85,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Categories
-  async getCategories(): Promise<typeof categories.$inferSelect[]> {
+  async getCategories(): Promise<Category[]> {
     return await db.select().from(categories);
   }
 
-  async createCategory(category: typeof categories.$inferInsert): Promise<typeof categories.$inferSelect> {
+  async createCategory(category: typeof categories.$inferInsert): Promise<Category> {
     const [newCat] = await db.insert(categories).values(category).returning();
     return newCat;
   }
 
   // Products
-  async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: typeof categories.$inferSelect })[]> {
-    let query = db.select().from(products).leftJoin(categories, eq(products.categoryId, categories.id));
+  async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category })[]> {
+    let query = db.select().from(products).innerJoin(categories, eq(products.categoryId, categories.id));
     
-    if (categoryId) {
+    const conditions = [];
+    if (categoryId) conditions.push(eq(products.categoryId, categoryId));
+    if (search) conditions.push(like(products.name, `%${search}%`));
+
+    if (conditions.length > 0) {
       // @ts-ignore
-      query = query.where(eq(products.categoryId, categoryId));
-    }
-    
-    if (search) {
-      // @ts-ignore
-      query = query.where(like(products.name, `%${search}%`));
+      query = query.where(and(...conditions));
     }
 
     const results = await query;
-    return results.map(r => ({ ...r.products, category: r.categories! }));
+    return results.map(r => ({ ...r.products, category: r.categories }));
   }
 
   async createProduct(product: typeof products.$inferInsert): Promise<Product> {
@@ -135,7 +137,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void> {
-    // Check if exists
     const [existing] = await db.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
     
     if (existing) {
@@ -149,6 +150,31 @@ export class DatabaseStorage implements IStorage {
         quantity: quantityChange,
       });
     }
+  }
+
+  async transferInventory(userId: string, productId: number, fromBranchId: number, toBranchId: number, quantity: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, fromBranchId)));
+      if (!stock || stock.quantity < quantity) throw new Error("Insufficient stock");
+
+      await tx.insert(inventoryMovements).values({
+        productId,
+        fromBranchId,
+        toBranchId,
+        quantity,
+        type: 'transfer',
+        userId,
+      });
+
+      await tx.execute(sql`UPDATE inventory SET quantity = quantity - ${quantity} WHERE id = ${stock.id}`);
+      
+      const [destStock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, toBranchId)));
+      if (destStock) {
+        await tx.execute(sql`UPDATE inventory SET quantity = quantity + ${quantity} WHERE id = ${destStock.id}`);
+      } else {
+        await tx.insert(inventory).values({ productId, branchId: toBranchId, quantity });
+      }
+    });
   }
 
   // Clients
@@ -185,14 +211,17 @@ export class DatabaseStorage implements IStorage {
   // Sales
   async createSale(userId: string, input: SaleInput): Promise<Sale> {
     return await db.transaction(async (tx) => {
-      // 1. Calculate total
       let totalAmount = 0;
       for (const item of input.items) {
+        // Step 3.2: Stock check
+        const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, item.productId), eq(inventory.branchId, input.branchId)));
+        if (!stock || stock.quantity < item.quantity) {
+          throw new Error(`Insufficient stock for product ${item.productId}`);
+        }
         totalAmount += (item.price * item.quantity) - item.discount;
       }
       totalAmount -= input.discount;
 
-      // 2. Create Sale
       const [sale] = await tx.insert(sales).values({
         branchId: input.branchId,
         clientId: input.clientId,
@@ -202,7 +231,6 @@ export class DatabaseStorage implements IStorage {
         paymentMethod: input.paymentMethod,
       }).returning();
 
-      // 3. Create Sale Items, Inventory Audit, and Update Inventory
       for (const item of input.items) {
         await tx.insert(saleItems).values({
           saleId: sale.id,
@@ -213,7 +241,6 @@ export class DatabaseStorage implements IStorage {
           discount: item.discount.toFixed(2),
         });
 
-        // Audit Log
         await tx.insert(inventoryMovements).values({
           productId: item.productId,
           fromBranchId: input.branchId,
@@ -222,7 +249,6 @@ export class DatabaseStorage implements IStorage {
           userId: userId,
         });
 
-        // Update inventory (decrement)
         await tx.execute(sql`
           UPDATE inventory 
           SET quantity = quantity - ${item.quantity} 
@@ -232,32 +258,16 @@ export class DatabaseStorage implements IStorage {
         // Update KPI
         const month = new Date().getMonth() + 1;
         const year = new Date().getFullYear();
-        const totalItemAmount = (item.price * item.quantity) - item.discount;
+        const itemAmount = (item.price * item.quantity) - item.discount;
         
         const [existingKpi] = await tx.select().from(employeeKpi).where(
-          and(
-            eq(employeeKpi.userId, userId),
-            eq(employeeKpi.branchId, input.branchId),
-            eq(employeeKpi.month, month),
-            eq(employeeKpi.year, year)
-          )
+          and(eq(employeeKpi.userId, userId), eq(employeeKpi.branchId, input.branchId), eq(employeeKpi.month, month), eq(employeeKpi.year, year))
         );
 
         if (existingKpi) {
-          await tx.update(employeeKpi)
-            .set({ 
-              totalSales: (Number(existingKpi.totalSales) + totalItemAmount).toFixed(2),
-              updatedAt: new Date()
-            })
-            .where(eq(employeeKpi.id, existingKpi.id));
+          await tx.update(employeeKpi).set({ totalSales: (Number(existingKpi.totalSales) + itemAmount).toFixed(2), updatedAt: new Date() }).where(eq(employeeKpi.id, existingKpi.id));
         } else {
-          await tx.insert(employeeKpi).values({
-            userId,
-            branchId: input.branchId,
-            month,
-            year,
-            totalSales: totalItemAmount.toFixed(2),
-          });
+          await tx.insert(employeeKpi).values({ userId, branchId: input.branchId, month, year, totalSales: itemAmount.toFixed(2) });
         }
       }
 
@@ -268,15 +278,11 @@ export class DatabaseStorage implements IStorage {
   async processReturn(userId: string, saleId: number, reason: string): Promise<SaleReturn> {
     return await db.transaction(async (tx) => {
       const [sale] = await tx.select().from(sales).where(eq(sales.id, saleId));
-      if (!sale) throw new Error("Sale not found");
-      if (sale.status === 'returned') throw new Error("Sale already returned");
+      if (!sale || sale.status === 'returned') throw new Error("Invalid sale");
 
       const items = await tx.select().from(saleItems).where(eq(saleItems.saleId, saleId));
-
-      // 1. Update Sale Status
       await tx.update(sales).set({ status: 'returned' }).where(eq(sales.id, saleId));
 
-      // 2. Log Return
       const [saleReturn] = await tx.insert(saleReturns).values({
         saleId,
         userId,
@@ -284,7 +290,6 @@ export class DatabaseStorage implements IStorage {
         totalRefunded: sale.totalAmount,
       }).returning();
 
-      // 3. Restore Inventory and Log Movement
       for (const item of items) {
         await tx.insert(inventoryMovements).values({
           productId: item.productId,
@@ -302,34 +307,6 @@ export class DatabaseStorage implements IStorage {
       }
 
       return saleReturn;
-    });
-  }
-
-  async transferInventory(userId: string, productId: number, fromBranchId: number, toBranchId: number, quantity: number): Promise<void> {
-    await db.transaction(async (tx) => {
-      // 1. Check stock
-      const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, fromBranchId)));
-      if (!stock || stock.quantity < quantity) throw new Error("Insufficient stock");
-
-      // 2. Audit Log
-      await tx.insert(inventoryMovements).values({
-        productId,
-        fromBranchId,
-        toBranchId,
-        quantity,
-        type: 'transfer',
-        userId,
-      });
-
-      // 3. Update Inventory
-      await tx.execute(sql`UPDATE inventory SET quantity = quantity - ${quantity} WHERE id = ${stock.id}`);
-      
-      const [destStock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, toBranchId)));
-      if (destStock) {
-        await tx.execute(sql`UPDATE inventory SET quantity = quantity + ${quantity} WHERE id = ${destStock.id}`);
-      } else {
-        await tx.insert(inventory).values({ productId, branchId: toBranchId, quantity });
-      }
     });
   }
 
@@ -381,24 +358,23 @@ export class DatabaseStorage implements IStorage {
 
   // Reports
   async getDashboardStats(): Promise<any> {
-    // Basic implementation
     const today = new Date();
     today.setHours(0,0,0,0);
     
-    const dailySales = await db.select({ total: sum(sales.totalAmount) })
-      .from(sales)
-      .where(gte(sales.createdAt, today));
-      
+    const dailySales = await db.select({ total: sum(sales.totalAmount) }).from(sales).where(and(gte(sales.createdAt, today), eq(sales.status, 'completed')));
     const totalClients = await db.select({ count: sql<number>`count(*)` }).from(clients);
-    
     const lowStock = await db.select({ count: sql<number>`count(*)` }).from(inventory).where(lte(inventory.quantity, 5));
+    
+    const totalIncome = await db.select({ total: sum(sales.totalAmount) }).from(sales).where(eq(sales.status, 'completed'));
+    const totalExpenses = await db.select({ total: sum(expenses.amount) }).from(expenses);
 
     return {
       dailySales: Number(dailySales[0]?.total || 0),
-      monthlySales: 0, // TODO
+      monthlySales: 0,
       totalClients: Number(totalClients[0]?.count || 0),
       lowStockCount: Number(lowStock[0]?.count || 0),
       topProducts: [],
+      totalProfit: Number(totalIncome[0]?.total || 0) - Number(totalExpenses[0]?.total || 0),
     };
   }
 }

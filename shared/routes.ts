@@ -16,6 +16,8 @@ import {
   expenses
 } from './schema';
 
+export type { Branch, SaleInput, Category, Product, Inventory, Client, Prescription, Sale, SaleItem, Expense, InventoryMovement, SaleReturn, EmployeeKpi } from './schema';
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -95,7 +97,7 @@ export const api = {
         search: z.string().optional(),
       }).optional(),
       responses: {
-        200: z.array(z.any()), // Complex type, simplifying for now
+        200: z.array(z.any()),
       },
     },
     update: {
@@ -104,7 +106,20 @@ export const api = {
       input: z.object({
         productId: z.number(),
         branchId: z.number(),
-        quantity: z.number(), // Add/Subtract
+        quantity: z.number(),
+      }),
+      responses: {
+        200: z.any(),
+      },
+    },
+    transfer: {
+      method: 'POST' as const,
+      path: '/api/inventory/transfer',
+      input: z.object({
+        productId: z.number(),
+        fromBranchId: z.number(),
+        toBranchId: z.number(),
+        quantity: z.number(),
       }),
       responses: {
         200: z.any(),
@@ -176,6 +191,16 @@ export const api = {
         200: z.array(z.any()),
       },
     },
+    return: {
+      method: 'POST' as const,
+      path: '/api/sales/:id/return',
+      input: z.object({
+        reason: z.string(),
+      }),
+      responses: {
+        200: z.any(),
+      },
+    },
   },
   expenses: {
     list: {
@@ -209,6 +234,7 @@ export const api = {
           totalClients: z.number(),
           lowStockCount: z.number(),
           topProducts: z.array(z.any()),
+          totalProfit: z.number(),
         }),
       },
     },

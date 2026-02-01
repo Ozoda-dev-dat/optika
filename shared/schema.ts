@@ -40,7 +40,6 @@ export const inventory = pgTable("inventory", {
   quantity: integer("quantity").notNull().default(0),
 });
 
-// TZZ: Audit logs for inventory movements
 export const inventoryMovements = pgTable("inventory_movements", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").references(() => products.id).notNull(),
@@ -101,7 +100,6 @@ export const saleItems = pgTable("sale_items", {
   discount: decimal("discount", { precision: 12, scale: 2 }).default("0"),
 });
 
-// TZZ: Employee KPI tracking
 export const employeeKpi = pgTable("employee_kpi", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").references(() => users.id).notNull(),
@@ -113,7 +111,6 @@ export const employeeKpi = pgTable("employee_kpi", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// TZZ: Returns/Refunds tracking
 export const saleReturns = pgTable("sale_returns", {
   id: serial("id").primaryKey(),
   saleId: integer("sale_id").references(() => sales.id).notNull(),
@@ -121,19 +118,6 @@ export const saleReturns = pgTable("sale_returns", {
   reason: text("reason"),
   totalRefunded: decimal("total_refunded", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const SaleInputSchema = z.object({
-  clientId: z.number().optional(),
-  branchId: z.number(),
-  items: z.array(z.object({
-    productId: z.number(),
-    quantity: z.number(),
-    price: z.number(),
-    discount: z.number().default(0),
-  })),
-  paymentMethod: z.enum(["cash", "card", "click", "payme", "transfer"]),
-  discount: z.number().default(0),
 });
 
 export const expenses = pgTable("expenses", {
@@ -223,16 +207,19 @@ export type SaleItem = typeof saleItems.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
 export type SaleReturn = typeof saleReturns.$inferSelect;
+export type EmployeeKpi = typeof employeeKpi.$inferSelect;
 
-export type SaleInput = {
-  clientId?: number;
-  branchId: number;
-  items: {
-    productId: number;
-    quantity: number;
-    price: number;
-    discount: number;
-  }[];
-  paymentMethod: string;
-  discount: number;
-};
+export const SaleInputSchema = z.object({
+  clientId: z.number().optional(),
+  branchId: z.number(),
+  items: z.array(z.object({
+    productId: z.number(),
+    quantity: z.number(),
+    price: z.number(),
+    discount: z.number().default(0),
+  })),
+  paymentMethod: z.enum(["cash", "card", "click", "payme", "transfer"]),
+  discount: z.number().default(0),
+});
+
+export type SaleInput = z.infer<typeof SaleInputSchema>;
