@@ -101,6 +101,18 @@ export const saleItems = pgTable("sale_items", {
   discount: decimal("discount", { precision: 12, scale: 2 }).default("0"),
 });
 
+// TZZ: Employee KPI tracking
+export const employeeKpi = pgTable("employee_kpi", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  branchId: integer("branch_id").references(() => branches.id).notNull(),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  totalSales: decimal("total_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalBonus: decimal("total_bonus", { precision: 12, scale: 2 }).notNull().default("0"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // TZZ: Returns/Refunds tracking
 export const saleReturns = pgTable("sale_returns", {
   id: serial("id").primaryKey(),

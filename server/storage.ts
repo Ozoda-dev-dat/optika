@@ -228,6 +228,37 @@ export class DatabaseStorage implements IStorage {
           SET quantity = quantity - ${item.quantity} 
           WHERE product_id = ${item.productId} AND branch_id = ${input.branchId}
         `);
+
+        // Update KPI
+        const month = new Date().getMonth() + 1;
+        const year = new Date().getFullYear();
+        const totalItemAmount = (item.price * item.quantity) - item.discount;
+        
+        const [existingKpi] = await tx.select().from(employeeKpi).where(
+          and(
+            eq(employeeKpi.userId, userId),
+            eq(employeeKpi.branchId, input.branchId),
+            eq(employeeKpi.month, month),
+            eq(employeeKpi.year, year)
+          )
+        );
+
+        if (existingKpi) {
+          await tx.update(employeeKpi)
+            .set({ 
+              totalSales: (Number(existingKpi.totalSales) + totalItemAmount).toFixed(2),
+              updatedAt: new Date()
+            })
+            .where(eq(employeeKpi.id, existingKpi.id));
+        } else {
+          await tx.insert(employeeKpi).values({
+            userId,
+            branchId: input.branchId,
+            month,
+            year,
+            totalSales: totalItemAmount.toFixed(2),
+          });
+        }
       }
 
       return sale;
