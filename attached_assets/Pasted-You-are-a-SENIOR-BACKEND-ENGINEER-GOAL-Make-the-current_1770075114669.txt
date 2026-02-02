@@ -1,0 +1,88 @@
+You are a SENIOR BACKEND ENGINEER.
+
+GOAL:
+Make the current Optical Store CRM backend 100% compliant with the TZZ by fixing ONLY the final missing parts:
+(1) Endpoint-level RBAC
+(2) Inventory Transfer + Inventory Adjust endpoints
+(3) Audit logging + Negative-stock protection for ALL inventory changes
+
+STRICT RULES:
+- Do NOT add any new features beyond these items
+- Do NOT change database schema (assume tables already exist)
+- Do NOT touch frontend code
+- Do NOT refactor unrelated code
+- Use DB transactions for every inventory-changing operation
+- Output FULL updated file content for every changed backend/shared file (NO diffs)
+
+────────────────────────────────
+1) RBAC (Endpoint-level)
+────────────────────────────────
+- Implement middleware: requireRole(roles[])
+- Roles already exist (admin, manager, sales, optometrist). Enforce:
+  • Admin: full access
+  • Manager: branches + inventory + reports/analytics (read/write where appropriate)
+  • Sales: sales + clients (no system settings / no user management)
+  • Optometrist: clients + prescriptions only
+- Apply requireRole to EVERY endpoint (do not rely only on isAuthenticated)
+
+────────────────────────────────
+2) Inventory Transfer Endpoint
+────────────────────────────────
+- Implement: POST /api/inventory/transfer
+- Validate input: { productId, fromBranchId, toBranchId, quantity }
+- Transaction rules:
+  • Check source branch has enough stock BEFORE decrement
+  • Decrement source branch
+  • Increment destination branch
+  • Reject if would make stock negative
+- Log both movements in inventory_movements with:
+  • type = "transfer"
+  • userId (who did it)
+  • productId
+  • branchId (from and to)
+  • quantityChange (-qty for from, +qty for to)
+  • reason/details
+
+────────────────────────────────
+3) Inventory Adjust Endpoint
+────────────────────────────────
+- Implement: POST /api/inventory/adjust
+- Validate input: { productId, branchId, quantityChange, reason }
+- Transaction rules:
+  • If quantityChange is negative: ensure current stock >= abs(quantityChange)
+  • Apply change
+- Log in inventory_movements with:
+  • type = "adjust"
+  • userId, productId, branchId, quantityChange, reason
+
+────────────────────────────────
+4) Audit + Negative stock protection everywhere
+────────────────────────────────
+Ensure these operations ALL:
+- run in a transaction
+- prevent negative stock
+- write inventory_movements
+Operations:
+  • sale create (deduct stock)
+  • sale return (restore stock)
+  • transfer
+  • adjust
+
+If sale create/return already exists, modify ONLY enough to:
+- add stock validation (no negative)
+- add inventory_movements logging
+
+────────────────────────────────
+OUTPUT REQUIRED (MANDATORY)
+────────────────────────────────
+A) List of endpoints and required roles (short table)
+B) FULL PATCH:
+--- FILE: <path> ---
+<full new content>
+--- END FILE ---
+(include every changed backend/shared file)
+C) Example API responses for:
+  - POST /api/inventory/transfer (success + insufficient stock error)
+  - POST /api/inventory/adjust (success + insufficient stock error)
+
+Do NOT ask me to test until you output the full patch.
