@@ -116,7 +116,7 @@ export async function registerRoutes(
   // === Sales ===
   app.post(api.sales.create.path, isAuthenticated, async (req, res) => {
     // @ts-ignore
-    const userId = req.user.claims.sub;
+    const userId = req.user.id;
     const input = api.sales.create.input.parse(req.body);
     const sale = await storage.createSale(userId, input);
     res.status(201).json(sale);
@@ -125,6 +125,19 @@ export async function registerRoutes(
   app.get(api.sales.list.path, isAuthenticated, async (req, res) => {
     const sales = await storage.getSales({});
     res.json(sales);
+  });
+
+  app.post(api.sales.return.path, isAuthenticated, async (req, res) => {
+    try {
+      // @ts-ignore
+      const userId = req.user.id;
+      const saleId = Number(req.params.id);
+      const { reason } = api.sales.return.input.parse(req.body);
+      const saleReturn = await storage.processReturn(userId, saleId, reason);
+      res.json(saleReturn);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
   });
 
   // === Expenses ===
