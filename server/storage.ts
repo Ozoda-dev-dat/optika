@@ -46,10 +46,107 @@ export interface IStorage extends IAuthStorage {
   // Reports
   getDashboardStats(): Promise<any>;
   getEmployeeKpi(month: number, year: number): Promise<any[]>;
+  getAnalyticsDashboard(range: 'daily' | 'weekly' | 'monthly'): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
   // ... (existing code)
+
+  async getAnalyticsDashboard(range: 'daily' | 'weekly' | 'monthly'): Promise<any> {
+    const now = new Date();
+    let startDate = new Date();
+    
+    if (range === 'daily') {
+      startDate.setHours(0, 0, 0, 0);
+    } else if (range === 'weekly') {
+      startDate.setDate(now.getDate() - 7);
+    } else if (range === 'monthly') {
+      startDate.setMonth(now.getMonth() - 1);
+    }
+
+    // 1. Totals
+    const salesTotal = await db.select({ 
+      count: sql<number>`count(*)`,
+      revenue: sum(sales.totalAmount) 
+    })
+    .from(sales)
+    .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')));
+
+    const expenseTotal = await db.select({ 
+      amount: sum(expenses.amount) 
+    })
+    .from(expenses)
+    .where(gte(expenses.date, startDate));
+
+    // 2. Best-selling products
+    const bestSelling = await db.select({
+      productId: saleItems.productId,
+      name: products.name,
+      totalQuantity: sum(saleItems.quantity),
+      totalRevenue: sum(saleItems.total)
+    })
+    .from(saleItems)
+    .innerJoin(products, eq(saleItems.productId, products.id))
+    .innerJoin(sales, eq(saleItems.saleId, sales.id))
+    .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')))
+    .groupBy(saleItems.productId, products.name)
+    .orderBy(desc(sql`sum(${saleItems.quantity})`))
+    .limit(5);
+
+    // 3. Low-stock products
+    const lowStock = await db.select({
+      productId: products.id,
+      name: products.name,
+      quantity: sum(inventory.quantity)
+    })
+    .from(inventory)
+    .innerJoin(products, eq(inventory.productId, products.id))
+    .groupBy(products.id, products.name)
+    .having(sql`sum(${inventory.quantity}) <= 5`)
+    .limit(10);
+
+    // 4. Top employees
+    const topEmployees = await db.select({
+      userId: sales.userId,
+      username: users.username,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      totalSales: sum(sales.totalAmount)
+    })
+    .from(sales)
+    .innerJoin(users, eq(sales.userId, users.id))
+    .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')))
+    .groupBy(sales.userId, users.username, users.firstName, users.lastName)
+    .orderBy(desc(sql`sum(${sales.totalAmount})`))
+    .limit(5);
+
+    // 5. Top branches
+    const topBranches = await db.select({
+      branchId: sales.branchId,
+      name: branches.name,
+      totalSales: sum(sales.totalAmount)
+    })
+    .from(sales)
+    .innerJoin(branches, eq(sales.branchId, branches.id))
+    .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')))
+    .groupBy(sales.branchId, branches.name)
+    .orderBy(desc(sql`sum(${sales.totalAmount})`))
+    .limit(5);
+
+    return {
+      range,
+      totals: {
+        salesCount: Number(salesTotal[0]?.count || 0),
+        revenue: Number(salesTotal[0]?.revenue || 0),
+        expenses: Number(expenseTotal[0]?.amount || 0),
+        netProfit: Number(salesTotal[0]?.revenue || 0) - Number(expenseTotal[0]?.amount || 0)
+      },
+      bestSellingProducts: bestSelling.map(p => ({ ...p, totalQuantity: Number(p.totalQuantity), totalRevenue: Number(p.totalRevenue) })),
+      lowStockProducts: lowStock.map(p => ({ ...p, quantity: Number(p.quantity) })),
+      topEmployees: topEmployees.map(e => ({ ...e, totalSales: Number(e.totalSales) })),
+      topBranches: topBranches.map(b => ({ ...b, totalSales: Number(b.totalSales) }))
+    };
+  }
   
   async getEmployeeKpi(month: number, year: number): Promise<any[]> {
     const results = await db.select({

@@ -167,6 +167,12 @@ export async function registerRoutes(
     res.json(kpis);
   });
 
+  app.get("/api/analytics/dashboard", isAuthenticated, async (req, res) => {
+    const range = (req.query.range as 'daily' | 'weekly' | 'monthly') || 'daily';
+    const stats = await storage.getAnalyticsDashboard(range);
+    res.json(stats);
+  });
+
   // Seed Data
   await seedDatabase();
 
