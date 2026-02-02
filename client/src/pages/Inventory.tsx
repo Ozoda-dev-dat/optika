@@ -27,15 +27,15 @@ export default function Inventory() {
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(insertProductSchema),
-    defaultValues: { name: "", sku: "", price: 0, costPrice: 0 },
+    defaultValues: { name: "", sku: "", price: "0", costPrice: "0", categoryId: 0 },
   });
 
   const onSubmit = (data: ProductFormValues) => {
     // Ensure numbers are numbers
     const payload = {
       ...data,
-      price: Number(data.price),
-      costPrice: Number(data.costPrice),
+      price: data.price.toString(),
+      costPrice: data.costPrice.toString(),
       categoryId: Number(data.categoryId),
     };
     

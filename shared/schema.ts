@@ -31,6 +31,10 @@ export const products = pgTable("products", {
   price: decimal("price", { precision: 12, scale: 2 }).notNull(),
   costPrice: decimal("cost_price", { precision: 12, scale: 2 }).notNull(),
   imageUrl: text("image_url"),
+  // STEP 2: Product fields
+  supplier: text("supplier"),
+  receivedDate: timestamp("received_date").defaultNow(),
+  status: text("status").default("in_stock").notNull(), // 'in_stock', 'sold', 'defective', 'transferred'
 });
 
 export const inventory = pgTable("inventory", {
@@ -43,10 +47,12 @@ export const inventory = pgTable("inventory", {
 export const inventoryMovements = pgTable("inventory_movements", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").references(() => products.id).notNull(),
+  branchId: integer("branch_id").references(() => branches.id), // Context of the movement
   fromBranchId: integer("from_branch_id").references(() => branches.id),
   toBranchId: integer("to_branch_id").references(() => branches.id),
   quantity: integer("quantity").notNull(),
-  type: text("type").notNull(), // 'sale', 'return', 'transfer', 'adjustment'
+  type: text("type").notNull(), // 'sale', 'return', 'transfer', 'adjustment', 'received'
+  reason: text("reason"),
   userId: varchar("user_id").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -111,6 +117,7 @@ export const employeeKpi = pgTable("employee_kpi", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// STEP 3: Sales return support
 export const saleReturns = pgTable("sale_returns", {
   id: serial("id").primaryKey(),
   saleId: integer("sale_id").references(() => sales.id).notNull(),
@@ -118,6 +125,14 @@ export const saleReturns = pgTable("sale_returns", {
   reason: text("reason"),
   totalRefunded: decimal("total_refunded", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const saleReturnItems = pgTable("sale_return_items", {
+  id: serial("id").primaryKey(),
+  saleReturnId: integer("sale_return_id").references(() => saleReturns.id).notNull(),
+  productId: integer("product_id").references(() => products.id).notNull(),
+  quantity: integer("quantity").notNull(),
+  refundAmount: decimal("refund_amount", { precision: 12, scale: 2 }).notNull(),
 });
 
 export const expenses = pgTable("expenses", {
@@ -181,6 +196,29 @@ export const salesRelations = relations(sales, ({ one, many }) => ({
   returns: many(saleReturns),
 }));
 
+export const saleReturnsRelations = relations(saleReturns, ({ one, many }) => ({
+  sale: one(sales, {
+    fields: [saleReturns.saleId],
+    references: [sales.id],
+  }),
+  user: one(users, {
+    fields: [saleReturns.userId],
+    references: [users.id],
+  }),
+  items: many(saleReturnItems),
+}));
+
+export const saleReturnItemsRelations = relations(saleReturnItems, ({ one }) => ({
+  saleReturn: one(saleReturns, {
+    fields: [saleReturnItems.saleReturnId],
+    references: [saleReturns.id],
+  }),
+  product: one(products, {
+    fields: [saleReturnItems.productId],
+    references: [products.id],
+  }),
+}));
+
 // === INSERT SCHEMAS ===
 
 export const insertBranchSchema = createInsertSchema(branches).omit({ id: true });
@@ -194,6 +232,7 @@ export const insertSaleItemSchema = createInsertSchema(saleItems).omit({ id: tru
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, date: true });
 export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({ id: true, createdAt: true });
 export const insertSaleReturnSchema = createInsertSchema(saleReturns).omit({ id: true, createdAt: true });
+export const insertSaleReturnItemSchema = createInsertSchema(saleReturnItems).omit({ id: true });
 
 // === API TYPES ===
 export type Branch = typeof branches.$inferSelect;
@@ -207,6 +246,7 @@ export type SaleItem = typeof saleItems.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
 export type SaleReturn = typeof saleReturns.$inferSelect;
+export type SaleReturnItem = typeof saleReturnItems.$inferSelect;
 export type EmployeeKpi = typeof employeeKpi.$inferSelect;
 
 export const SaleInputSchema = z.object({

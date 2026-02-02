@@ -89,30 +89,30 @@ export default function ClientDetails() {
                         <FormField 
                           control={form.control} name="doctorName"
                           render={({field}) => (
-                            <FormItem><FormLabel>Doktor Ismi</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
+                            <FormItem><FormLabel>Doktor Ismi</FormLabel><FormControl><Input {...field} value={field.value || ""} /></FormControl></FormItem>
                           )}
                         />
                         <div className="grid grid-cols-2 gap-6">
                           <div className="space-y-4 border p-4 rounded-lg">
                             <h4 className="font-bold flex items-center gap-2"><Eye className="w-4 h-4"/> O'ng Ko'z (OD)</h4>
                             <div className="grid grid-cols-3 gap-2">
-                               <FormField control={form.control} name="sphRight" render={({field}) => (<FormItem><FormControl><Input placeholder="SPH" {...field} /></FormControl></FormItem>)} />
-                               <FormField control={form.control} name="cylRight" render={({field}) => (<FormItem><FormControl><Input placeholder="CYL" {...field} /></FormControl></FormItem>)} />
-                               <FormField control={form.control} name="axisRight" render={({field}) => (<FormItem><FormControl><Input placeholder="AXIS" {...field} /></FormControl></FormItem>)} />
+                               <FormField control={form.control} name="sphRight" render={({field}) => (<FormItem><FormControl><Input placeholder="SPH" {...field} value={field.value || ""} /></FormControl></FormItem>)} />
+                               <FormField control={form.control} name="cylRight" render={({field}) => (<FormItem><FormControl><Input placeholder="CYL" {...field} value={field.value || ""} /></FormControl></FormItem>)} />
+                               <FormField control={form.control} name="axisRight" render={({field}) => (<FormItem><FormControl><Input placeholder="AXIS" {...field} value={field.value || ""} /></FormControl></FormItem>)} />
                             </div>
-                            <FormField control={form.control} name="pdRight" render={({field}) => (<FormItem><FormControl><Input placeholder="PD" {...field} /></FormControl></FormItem>)} />
+                            <FormField control={form.control} name="pdRight" render={({field}) => (<FormItem><FormControl><Input placeholder="PD" {...field} value={field.value || ""} /></FormControl></FormItem>)} />
                           </div>
                           <div className="space-y-4 border p-4 rounded-lg">
                             <h4 className="font-bold flex items-center gap-2"><Eye className="w-4 h-4"/> Chap Ko'z (OS)</h4>
                             <div className="grid grid-cols-3 gap-2">
-                               <FormField control={form.control} name="sphLeft" render={({field}) => (<FormItem><FormControl><Input placeholder="SPH" {...field} /></FormControl></FormItem>)} />
-                               <FormField control={form.control} name="cylLeft" render={({field}) => (<FormItem><FormControl><Input placeholder="CYL" {...field} /></FormControl></FormItem>)} />
-                               <FormField control={form.control} name="axisLeft" render={({field}) => (<FormItem><FormControl><Input placeholder="AXIS" {...field} /></FormControl></FormItem>)} />
+                               <FormField control={form.control} name="sphLeft" render={({field}) => (<FormItem><FormControl><Input placeholder="SPH" {...field} value={field.value || ""} /></FormControl></FormItem>)} />
+                               <FormField control={form.control} name="cylLeft" render={({field}) => (<FormItem><FormControl><Input placeholder="CYL" {...field} value={field.value || ""} /></FormControl></FormItem>)} />
+                               <FormField control={form.control} name="axisLeft" render={({field}) => (<FormItem><FormControl><Input placeholder="AXIS" {...field} value={field.value || ""} /></FormControl></FormItem>)} />
                             </div>
-                            <FormField control={form.control} name="pdLeft" render={({field}) => (<FormItem><FormControl><Input placeholder="PD" {...field} /></FormControl></FormItem>)} />
+                            <FormField control={form.control} name="pdLeft" render={({field}) => (<FormItem><FormControl><Input placeholder="PD" {...field} value={field.value || ""} /></FormControl></FormItem>)} />
                           </div>
                         </div>
-                        <FormField control={form.control} name="notes" render={({field}) => (<FormItem><FormLabel>Qo'shimcha Izoh</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="notes" render={({field}) => (<FormItem><FormLabel>Qo'shimcha Izoh</FormLabel><FormControl><Textarea {...field} value={field.value || ""} /></FormControl></FormItem>)} />
                         <Button type="submit" className="w-full">Saqlash</Button>
                       </form>
                     </Form>

@@ -26,12 +26,12 @@ export default function Expenses() {
 
   const form = useForm<ExpenseFormValues>({
     resolver: zodResolver(insertExpenseSchema),
-    defaultValues: { description: "", amount: 0, category: "other", branchId: undefined },
+    defaultValues: { description: "", amount: "0", category: "other", branchId: 0 },
   });
 
   const onSubmit = (data: ExpenseFormValues) => {
     if (!user) return;
-    const payload = { ...data, userId: user.id, amount: Number(data.amount), branchId: Number(data.branchId) };
+    const payload = { ...data, userId: user.id, amount: data.amount.toString(), branchId: Number(data.branchId) };
     
     createExpense.mutate(payload, {
       onSuccess: () => {
@@ -72,7 +72,7 @@ export default function Expenses() {
                    <FormMessage/></FormItem>
                  )}/>
                  <FormField control={form.control} name="amount" render={({field}) => (<FormItem><FormLabel>Summa</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl><FormMessage/></FormItem>)} />
-                 <FormField control={form.control} name="description" render={({field}) => (<FormItem><FormLabel>Izoh</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage/></FormItem>)} />
+                 <FormField control={form.control} name="description" render={({field}) => (<FormItem><FormLabel>Izoh</FormLabel><FormControl><Input {...field} value={field.value || ""} /></FormControl><FormMessage/></FormItem>)} />
                  <Button type="submit" className="w-full">Saqlash</Button>
                </form>
              </Form>

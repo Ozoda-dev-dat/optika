@@ -1,9 +1,9 @@
 import { 
   users, branches, products, inventory, clients, prescriptions, sales, saleItems, expenses, categories,
   inventoryMovements, saleReturns, employeeKpi,
-  type User, type InsertUser, type Branch, type Product, type Inventory, type Client, type Prescription, type Sale, type SaleItem, type Expense,
+  type User, type Branch, type Product, type Inventory, type Client, type Prescription, type Sale, type SaleItem, type Expense,
   type UpsertUser, type InventoryMovement, type SaleReturn, type EmployeeKpi,
-  SaleInput
+  type SaleInput, type Category
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, like, and, sql, desc, sum, gte, lte } from "drizzle-orm";
