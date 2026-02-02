@@ -45,9 +45,46 @@ export interface IStorage extends IAuthStorage {
 
   // Reports
   getDashboardStats(): Promise<any>;
+  getEmployeeKpi(month: number, year: number): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
+  // ... (existing code)
+  
+  async getEmployeeKpi(month: number, year: number): Promise<any[]> {
+    const results = await db.select({
+      userId: users.id,
+      username: users.username,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      position: users.position,
+      monthlySalary: users.monthlySalary,
+      commissionPercent: users.commissionPercent,
+      totalSales: employeeKpi.totalSales,
+    })
+    .from(users)
+    .leftJoin(employeeKpi, and(
+      eq(users.id, employeeKpi.userId),
+      eq(employeeKpi.month, month),
+      eq(employeeKpi.year, year)
+    ))
+    .where(sql`${users.role} != 'admin'`);
+
+    return results.map(row => {
+      const salary = Number(row.monthlySalary || 0);
+      const commissionPercent = Number(row.commissionPercent || 0);
+      const revenue = Number(row.totalSales || 0);
+      const commission = (revenue * commissionPercent) / 100;
+      
+      return {
+        ...row,
+        totalRevenue: revenue,
+        commission,
+        payout: salary + commission,
+      };
+    });
+  }
+
   // Auth
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));

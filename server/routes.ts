@@ -158,6 +158,15 @@ export async function registerRoutes(
     res.json(stats);
   });
 
+  app.get("/api/employees/kpi", isAuthenticated, async (req, res) => {
+    const monthStr = req.query.month as string; // YYYY-MM
+    if (!monthStr) return res.status(400).json({ message: "Month is required" });
+    
+    const [year, month] = monthStr.split('-').map(Number);
+    const kpis = await storage.getEmployeeKpi(month, year);
+    res.json(kpis);
+  });
+
   // Seed Data
   await seedDatabase();
 
