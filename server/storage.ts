@@ -409,7 +409,7 @@ export class DatabaseStorage implements IStorage {
       for (const item of input.items) {
         // Step 3.2: Stock check
         const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, item.productId), eq(inventory.branchId, input.branchId)));
-        if (!stock || stock.quantity < item.quantity) {
+        if (!stock || Number(stock.quantity) < item.quantity) {
           throw new Error(`Insufficient stock for product ${item.productId}`);
         }
         totalAmount += (item.price * item.quantity) - item.discount;
@@ -437,17 +437,18 @@ export class DatabaseStorage implements IStorage {
 
         await tx.insert(inventoryMovements).values({
           productId: item.productId,
+          branchId: input.branchId,
           fromBranchId: input.branchId,
-          quantity: item.quantity,
+          quantity: -item.quantity,
           type: 'sale',
+          reason: `Sale #${sale.id}`,
           userId: userId,
         });
 
-        await tx.execute(sql`
-          UPDATE inventory 
-          SET quantity = quantity - ${item.quantity} 
-          WHERE product_id = ${item.productId} AND branch_id = ${input.branchId}
-        `);
+        await tx.update(inventory)
+          .set({ quantity: sql`${inventory.quantity} - ${item.quantity}` })
+          .where(eq(inventory.productId, item.productId))
+          .where(eq(inventory.branchId, input.branchId));
 
         // Update KPI
         const month = new Date().getMonth() + 1;
