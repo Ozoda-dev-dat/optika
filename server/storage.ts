@@ -29,8 +29,8 @@ export interface IStorage extends IAuthStorage {
   adjustInventory(userId: string, productId: number, branchId: number, quantityChange: number, reason: string): Promise<void>;
 
   // Clients
-  getClients(search?: string): Promise<Client[]>;
-  getClient(id: number): Promise<Client & { prescriptions: Prescription[] } | undefined>;
+  getClients(search?: string): Promise<(Client & { totalSpent: number })[]>;
+  getClient(id: number): Promise<(Client & { prescriptions: Prescription[], salesHistory: any[], totalSpent: number }) | undefined>;
   createClient(client: typeof clients.$inferInsert): Promise<Client>;
   updateClient(id: number, data: Partial<typeof clients.$inferInsert>): Promise<Client>;
   addPrescription(prescription: typeof prescriptions.$inferInsert): Promise<Prescription>;
@@ -392,19 +392,52 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Clients
-  async getClients(search?: string): Promise<Client[]> {
-    if (search) {
-      return await db.select().from(clients).where(like(clients.firstName, `%${search}%`));
-    }
-    return await db.select().from(clients);
+  async getClients(search?: string): Promise<(Client & { totalSpent: number })[]> {
+    const clientsQuery = db.select({
+      client: clients,
+      totalSpent: sql<number>`COALESCE(SUM(CASE WHEN ${sales.status} = 'completed' THEN ${sales.totalAmount} ELSE 0 END), 0)`
+    })
+    .from(clients)
+    .leftJoin(sales, eq(clients.id, sales.clientId))
+    .groupBy(clients.id);
+
+    const results = await (search 
+      ? clientsQuery.where(like(clients.firstName, `%${search}%`))
+      : clientsQuery);
+
+    return results.map(r => ({
+      ...r.client,
+      totalSpent: Number(r.totalSpent)
+    }));
   }
 
-  async getClient(id: number): Promise<Client & { prescriptions: Prescription[] } | undefined> {
+  async getClient(id: number): Promise<(Client & { prescriptions: Prescription[], salesHistory: any[], totalSpent: number }) | undefined> {
     const [client] = await db.select().from(clients).where(eq(clients.id, id));
     if (!client) return undefined;
     
     const clientPrescriptions = await db.select().from(prescriptions).where(eq(prescriptions.clientId, id)).orderBy(desc(prescriptions.date));
-    return { ...client, prescriptions: clientPrescriptions };
+    
+    const clientSales = await db.select({
+      saleId: sales.id,
+      date: sales.createdAt,
+      totalAmount: sales.totalAmount,
+      paymentMethod: sales.paymentMethod,
+      status: sales.status
+    })
+    .from(sales)
+    .where(eq(sales.clientId, id))
+    .orderBy(desc(sales.createdAt));
+
+    const totalSpent = clientSales
+      .filter(s => s.status === 'completed')
+      .reduce((sum, s) => sum + Number(s.totalAmount), 0);
+
+    return { 
+      ...client, 
+      prescriptions: clientPrescriptions,
+      salesHistory: clientSales,
+      totalSpent
+    };
   }
 
   async createClient(client: typeof clients.$inferInsert): Promise<Client> {
