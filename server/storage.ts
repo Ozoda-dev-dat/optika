@@ -6,7 +6,7 @@ import {
   type SaleInput, type Category
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, like, and, sql, desc, sum, gte, lte } from "drizzle-orm";
+import { eq, like, and, sql, desc, sum, gte, lte, or } from "drizzle-orm";
 import { IAuthStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage extends IAuthStorage {
@@ -135,6 +135,38 @@ export class DatabaseStorage implements IStorage {
     .orderBy(desc(sql`sum(${sales.totalAmount})`))
     .limit(5);
 
+    // 6. Slow-moving products (lowest quantity sold in range)
+    const slowMoving = await db.select({
+      productId: products.id,
+      name: products.name,
+      soldQuantity: sql<number>`COALESCE(SUM(${saleItems.quantity}), 0)`
+    })
+    .from(products)
+    .leftJoin(saleItems, eq(products.id, saleItems.productId))
+    .leftJoin(sales, and(eq(saleItems.saleId, sales.id), gte(sales.createdAt, startDate), eq(sales.status, 'completed')))
+    .groupBy(products.id, products.name)
+    .orderBy(sql`COALESCE(SUM(${saleItems.quantity}), 0) ASC`)
+    .limit(5);
+
+    // 7. Stale products (NOT sold in the last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+
+    const staleProducts = await db.select({
+      productId: products.id,
+      name: products.name,
+      lastSaleDate: sql<string>`MAX(${sales.createdAt})`
+    })
+    .from(products)
+    .leftJoin(saleItems, eq(products.id, saleItems.productId))
+    .leftJoin(sales, and(eq(saleItems.saleId, sales.id), eq(sales.status, 'completed')))
+    .groupBy(products.id, products.name)
+    .having(or(
+      sql`MAX(${sales.createdAt}) < ${thirtyDaysAgo}`,
+      sql`MAX(${sales.createdAt}) IS NULL`
+    ))
+    .limit(10);
+
     return {
       range,
       totals: {
@@ -146,6 +178,16 @@ export class DatabaseStorage implements IStorage {
         name: p.name,
         quantitySold: Number(p.quantity || 0),
         revenue: Number(p.revenue || 0)
+      })),
+      slowMovingProducts: slowMoving.map(p => ({
+        productId: p.productId,
+        name: p.name,
+        soldQuantity: Number(p.soldQuantity)
+      })),
+      staleProducts: staleProducts.map(p => ({
+        productId: p.productId,
+        name: p.name,
+        daysSinceLastSale: p.lastSaleDate ? Math.floor((now.getTime() - new Date(p.lastSaleDate).getTime()) / (1000 * 60 * 60 * 24)) : null
       })),
       lowStockProducts: lowStock.map(p => ({
         id: p.productId,
