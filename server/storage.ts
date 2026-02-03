@@ -62,30 +62,30 @@ export class DatabaseStorage implements IStorage {
       startDate.setHours(0, 0, 0, 0);
     } else if (range === 'weekly') {
       startDate.setDate(now.getDate() - 7);
+      startDate.setHours(0, 0, 0, 0);
     } else if (range === 'monthly') {
       startDate.setMonth(now.getMonth() - 1);
+      startDate.setHours(0, 0, 0, 0);
     }
 
     // 1. Totals
     const salesTotal = await db.select({ 
-      count: sql<number>`count(*)`,
       revenue: sum(sales.totalAmount) 
     })
     .from(sales)
     .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')));
 
-    const expenseTotal = await db.select({ 
-      amount: sum(expenses.amount) 
+    const clientsCount = await db.select({ 
+      count: sql<number>`count(*)` 
     })
-    .from(expenses)
-    .where(gte(expenses.date, startDate));
+    .from(clients);
 
-    // 2. Best-selling products
+    // 2. Best-selling products (topProducts)
     const bestSelling = await db.select({
       productId: saleItems.productId,
       name: products.name,
-      totalQuantity: sum(saleItems.quantity),
-      totalRevenue: sum(saleItems.total)
+      quantity: sum(saleItems.quantity),
+      revenue: sum(saleItems.total)
     })
     .from(saleItems)
     .innerJoin(products, eq(saleItems.productId, products.id))
@@ -95,7 +95,7 @@ export class DatabaseStorage implements IStorage {
     .orderBy(desc(sql`sum(${saleItems.quantity})`))
     .limit(5);
 
-    // 3. Low-stock products
+    // 3. Low-stock products (threshold=10)
     const lowStock = await db.select({
       productId: products.id,
       name: products.name,
@@ -104,7 +104,7 @@ export class DatabaseStorage implements IStorage {
     .from(inventory)
     .innerJoin(products, eq(inventory.productId, products.id))
     .groupBy(products.id, products.name)
-    .having(sql`sum(${inventory.quantity}) <= 5`)
+    .having(sql`sum(${inventory.quantity}) < 10`)
     .limit(10);
 
     // 4. Top employees
@@ -113,7 +113,7 @@ export class DatabaseStorage implements IStorage {
       username: users.username,
       firstName: users.firstName,
       lastName: users.lastName,
-      totalSales: sum(sales.totalAmount)
+      revenue: sum(sales.totalAmount)
     })
     .from(sales)
     .innerJoin(users, eq(sales.userId, users.id))
@@ -126,7 +126,7 @@ export class DatabaseStorage implements IStorage {
     const topBranches = await db.select({
       branchId: sales.branchId,
       name: branches.name,
-      totalSales: sum(sales.totalAmount)
+      revenue: sum(sales.totalAmount)
     })
     .from(sales)
     .innerJoin(branches, eq(sales.branchId, branches.id))
@@ -138,15 +138,30 @@ export class DatabaseStorage implements IStorage {
     return {
       range,
       totals: {
-        salesCount: Number(salesTotal[0]?.count || 0),
-        revenue: Number(salesTotal[0]?.revenue || 0),
-        expenses: Number(expenseTotal[0]?.amount || 0),
-        netProfit: Number(salesTotal[0]?.revenue || 0) - Number(expenseTotal[0]?.amount || 0)
+        salesTotal: Number(salesTotal[0]?.revenue || 0),
+        totalClients: Number(clientsCount[0]?.count || 0)
       },
-      bestSellingProducts: bestSelling.map(p => ({ ...p, totalQuantity: Number(p.totalQuantity), totalRevenue: Number(p.totalRevenue) })),
-      lowStockProducts: lowStock.map(p => ({ ...p, quantity: Number(p.quantity) })),
-      topEmployees: topEmployees.map(e => ({ ...e, totalSales: Number(e.totalSales) })),
-      topBranches: topBranches.map(b => ({ ...b, totalSales: Number(b.totalSales) }))
+      topProducts: bestSelling.map(p => ({
+        id: p.productId,
+        name: p.name,
+        quantitySold: Number(p.quantity || 0),
+        revenue: Number(p.revenue || 0)
+      })),
+      lowStockProducts: lowStock.map(p => ({
+        id: p.productId,
+        name: p.name,
+        currentQuantity: Number(p.quantity || 0)
+      })),
+      topEmployees: topEmployees.map(e => ({
+        id: e.userId,
+        name: `${e.firstName} ${e.lastName}`,
+        revenue: Number(e.revenue || 0)
+      })),
+      topBranches: topBranches.map(b => ({
+        id: b.branchId,
+        name: b.name,
+        revenue: Number(b.revenue || 0)
+      }))
     };
   }
   
