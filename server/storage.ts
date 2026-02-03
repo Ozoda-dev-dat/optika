@@ -26,6 +26,7 @@ export interface IStorage extends IAuthStorage {
   getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product, branch: Branch })[]>;
   updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void>;
   transferInventory(userId: string, productId: number, fromBranchId: number, toBranchId: number, quantity: number): Promise<void>;
+  adjustInventory(userId: string, productId: number, branchId: number, quantityChange: number, reason: string): Promise<void>;
 
   // Clients
   getClients(search?: string): Promise<Client[]>;
@@ -287,27 +288,86 @@ export class DatabaseStorage implements IStorage {
   }
 
   async transferInventory(userId: string, productId: number, fromBranchId: number, toBranchId: number, quantity: number): Promise<void> {
+    if (quantity <= 0) throw new Error("Quantity must be positive");
+    
     await db.transaction(async (tx) => {
-      const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, fromBranchId)));
-      if (!stock || stock.quantity < quantity) throw new Error("Insufficient stock");
+      // 1. Check source stock
+      const [sourceStock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, fromBranchId)));
+      if (!sourceStock || Number(sourceStock.quantity) < quantity) {
+        throw new Error("Insufficient stock in source branch");
+      }
 
+      // 2. Decrement source
+      await tx.update(inventory)
+        .set({ quantity: sql`${inventory.quantity} - ${quantity}` })
+        .where(eq(inventory.id, sourceStock.id));
+
+      // 3. Log source movement
       await tx.insert(inventoryMovements).values({
         productId,
+        branchId: fromBranchId,
         fromBranchId,
         toBranchId,
-        quantity,
+        quantity: -quantity,
         type: 'transfer',
+        reason: `Transfer to branch #${toBranchId}`,
         userId,
       });
 
-      await tx.execute(sql`UPDATE inventory SET quantity = quantity - ${quantity} WHERE id = ${stock.id}`);
-      
+      // 4. Increment destination
       const [destStock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, toBranchId)));
       if (destStock) {
-        await tx.execute(sql`UPDATE inventory SET quantity = quantity + ${quantity} WHERE id = ${destStock.id}`);
+        await tx.update(inventory)
+          .set({ quantity: sql`${inventory.quantity} + ${quantity}` })
+          .where(eq(inventory.id, destStock.id));
       } else {
         await tx.insert(inventory).values({ productId, branchId: toBranchId, quantity });
       }
+
+      // 5. Log destination movement
+      await tx.insert(inventoryMovements).values({
+        productId,
+        branchId: toBranchId,
+        fromBranchId,
+        toBranchId,
+        quantity: quantity,
+        type: 'transfer',
+        reason: `Transfer from branch #${fromBranchId}`,
+        userId,
+      });
+    });
+  }
+
+  async adjustInventory(userId: string, productId: number, branchId: number, quantityChange: number, reason: string): Promise<void> {
+    if (quantityChange === 0) return;
+
+    await db.transaction(async (tx) => {
+      const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
+      
+      if (quantityChange < 0) {
+        const absChange = Math.abs(quantityChange);
+        if (!stock || Number(stock.quantity) < absChange) {
+          throw new Error("Insufficient stock for negative adjustment");
+        }
+      }
+
+      if (stock) {
+        await tx.update(inventory)
+          .set({ quantity: sql`${inventory.quantity} + ${quantityChange}` })
+          .where(eq(inventory.id, stock.id));
+      } else {
+        if (quantityChange < 0) throw new Error("Cannot decrease non-existent stock");
+        await tx.insert(inventory).values({ productId, branchId, quantity: quantityChange });
+      }
+
+      await tx.insert(inventoryMovements).values({
+        productId,
+        branchId,
+        quantity: quantityChange,
+        type: 'adjustment',
+        reason,
+        userId,
+      });
     });
   }
 

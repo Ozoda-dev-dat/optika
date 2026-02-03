@@ -86,10 +86,28 @@ export async function registerRoutes(
     res.json(inv);
   });
 
-  app.post(api.inventory.update.path, requireRole(["admin", "manager"]), async (req, res) => {
-    const { productId, branchId, quantity } = req.body;
-    await storage.updateInventory(productId, branchId, quantity);
-    res.json({ success: true });
+  app.post(api.inventory.transfer.path, requireRole(["admin", "manager"]), async (req, res) => {
+    try {
+      // @ts-ignore
+      const userId = req.user.id;
+      const { productId, fromBranchId, toBranchId, quantity } = api.inventory.transfer.input.parse(req.body);
+      await storage.transferInventory(userId, productId, fromBranchId, toBranchId, quantity);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/inventory/adjust", requireRole(["admin", "manager"]), async (req, res) => {
+    try {
+      // @ts-ignore
+      const userId = req.user.id;
+      const { productId, branchId, quantityChange, reason } = req.body;
+      await storage.adjustInventory(userId, productId, branchId, quantityChange, reason);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
   });
 
   // === Clients ===
