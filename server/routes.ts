@@ -79,7 +79,7 @@ export async function registerRoutes(
   });
 
   // === Inventory ===
-  app.get(api.inventory.list.path, requireRole(["admin", "manager"]), async (req, res) => {
+  app.get(api.inventory.list.path, requireRole(["admin", "manager", "sales", "optometrist"]), async (req, res) => {
     const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
     const search = req.query.search as string;
     const inv = await storage.getInventory(branchId, search);
@@ -123,13 +123,13 @@ export async function registerRoutes(
     res.json(client);
   });
 
-  app.post(api.clients.create.path, requireRole(["admin", "manager", "sales"]), async (req, res) => {
+  app.post(api.clients.create.path, requireRole(["admin", "manager", "sales", "optometrist"]), async (req, res) => {
     const input = api.clients.create.input.parse(req.body);
     const client = await storage.createClient(input);
     res.status(201).json(client);
   });
 
-  app.put(api.clients.update.path, requireRole(["admin", "manager", "sales"]), async (req, res) => {
+  app.put(api.clients.update.path, requireRole(["admin", "manager", "sales", "optometrist"]), async (req, res) => {
     const input = api.clients.update.input.parse(req.body);
     const client = await storage.updateClient(Number(req.params.id), input);
     res.json(client);
@@ -200,9 +200,6 @@ export async function registerRoutes(
     const stats = await storage.getAnalyticsDashboard(range);
     res.json(stats);
   });
-
-  // Seed Data
-  await seedDatabase();
 
   return httpServer;
 }
