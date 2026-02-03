@@ -351,6 +351,8 @@ export class DatabaseStorage implements IStorage {
         reason: `Transfer from branch #${fromBranchId}`,
         userId,
       });
+
+      await this.updateProductStatus(productId, tx);
     });
   }
 
@@ -384,6 +386,8 @@ export class DatabaseStorage implements IStorage {
         reason,
         userId,
       });
+
+      await this.updateProductStatus(productId, tx);
     });
   }
 
@@ -416,6 +420,21 @@ export class DatabaseStorage implements IStorage {
   async addPrescription(prescription: typeof prescriptions.$inferInsert): Promise<Prescription> {
     const [newPrescription] = await db.insert(prescriptions).values(prescription).returning();
     return newPrescription;
+  }
+
+  async updateProductStatus(productId: number, tx: any): Promise<void> {
+    const [totalStock] = await tx.select({
+      total: sql<number>`sum(${inventory.quantity})`
+    })
+    .from(inventory)
+    .where(eq(inventory.productId, productId));
+
+    const total = Number(totalStock?.total || 0);
+    const newStatus = total <= 0 ? 'sold' : 'in_stock';
+    
+    await tx.update(products)
+      .set({ status: newStatus })
+      .where(eq(products.id, productId));
   }
 
   // Sales
@@ -465,6 +484,8 @@ export class DatabaseStorage implements IStorage {
           .set({ quantity: sql`${inventory.quantity} - ${item.quantity}` })
           .where(eq(inventory.productId, item.productId))
           .where(eq(inventory.branchId, input.branchId));
+
+        await this.updateProductStatus(item.productId, tx);
 
         // Update KPI
         const month = new Date().getMonth() + 1;
@@ -535,6 +556,8 @@ export class DatabaseStorage implements IStorage {
             quantity: item.quantity,
           });
         }
+
+        await this.updateProductStatus(item.productId, tx);
       }
 
       return saleReturn;
