@@ -201,6 +201,12 @@ export async function registerRoutes(
     res.json(stats);
   });
 
+  app.get("/api/finance/profit-loss", requireRole(["admin", "manager"]), async (req, res) => {
+    const range = (req.query.range as 'daily' | 'weekly' | 'monthly') || 'daily';
+    const report = await storage.getProfitLoss(range);
+    res.json(report);
+  });
+
   return httpServer;
 }
 

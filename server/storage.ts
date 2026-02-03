@@ -46,6 +46,7 @@ export interface IStorage extends IAuthStorage {
 
   // Reports
   getDashboardStats(): Promise<any>;
+  getProfitLoss(range: 'daily' | 'weekly' | 'monthly'): Promise<{ totalRevenue: number; totalExpenses: number; profit: number }>;
   getEmployeeKpi(month: number, year: number): Promise<any[]>;
   getAnalyticsDashboard(range: 'daily' | 'weekly' | 'monthly'): Promise<any>;
 }
@@ -590,6 +591,36 @@ export class DatabaseStorage implements IStorage {
       lowStockCount: Number(lowStock[0]?.count || 0),
       topProducts: [],
       totalProfit: Number(totalIncome[0]?.total || 0) - Number(totalExpenses[0]?.total || 0),
+    };
+  }
+
+  async getProfitLoss(range: 'daily' | 'weekly' | 'monthly'): Promise<{ totalRevenue: number; totalExpenses: number; profit: number }> {
+    const now = new Date();
+    let startDate = new Date();
+    
+    if (range === 'daily') {
+      startDate.setHours(0, 0, 0, 0);
+    } else if (range === 'weekly') {
+      startDate.setDate(now.getDate() - 7);
+    } else if (range === 'monthly') {
+      startDate.setMonth(now.getMonth() - 1);
+    }
+
+    const salesTotal = await db.select({ revenue: sum(sales.totalAmount) })
+      .from(sales)
+      .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')));
+
+    const expenseTotal = await db.select({ amount: sum(expenses.amount) })
+      .from(expenses)
+      .where(gte(expenses.date, startDate));
+
+    const revenue = Number(salesTotal[0]?.revenue || 0);
+    const expenses_amt = Number(expenseTotal[0]?.amount || 0);
+
+    return {
+      totalRevenue: revenue,
+      totalExpenses: expenses_amt,
+      profit: revenue - expenses_amt
     };
   }
 }
