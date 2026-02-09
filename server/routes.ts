@@ -20,6 +20,14 @@ function requireRole(roles: string[]) {
   };
 }
 
+function sanitizeProductForRole(product: any, role: string) {
+  if (role === "sales") {
+    const { costPrice, ...sanitized } = product;
+    return sanitized;
+  }
+  return product;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -65,7 +73,9 @@ export async function registerRoutes(
     const categoryId = req.query.categoryId ? Number(req.query.categoryId) : undefined;
     const search = req.query.search as string;
     const products = await storage.getProducts(categoryId, search);
-    res.json(products);
+    // @ts-ignore
+    const role = req.user.role;
+    res.json(products.map(p => sanitizeProductForRole(p, role)));
   });
 
   app.post(api.products.create.path, requireRole(["admin", "manager"]), async (req, res) => {
@@ -83,7 +93,12 @@ export async function registerRoutes(
     const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
     const search = req.query.search as string;
     const inv = await storage.getInventory(branchId, search);
-    res.json(inv);
+    // @ts-ignore
+    const role = req.user.role;
+    res.json(inv.map(i => ({
+      ...i,
+      product: sanitizeProductForRole(i.product, role)
+    })));
   });
 
   app.post(api.inventory.transfer.path, requireRole(["admin", "manager"]), async (req, res) => {

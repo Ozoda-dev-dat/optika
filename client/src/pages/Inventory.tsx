@@ -14,6 +14,7 @@ import { insertProductSchema } from "@shared/schema";
 import { Plus, Search, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import { useAuth } from "@/hooks/use-auth";
 
 type ProductFormValues = z.infer<typeof insertProductSchema>;
 
@@ -22,8 +23,11 @@ export default function Inventory() {
   const { data: products, isLoading } = useProducts(undefined, search);
   const { data: categories } = useCategories();
   const createProduct = useCreateProduct();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+
+  const isSeller = user?.role === "sales";
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(insertProductSchema),
@@ -54,95 +58,97 @@ export default function Inventory() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <PageHeader title="Ombor" description="Mahsulotlar va qoldiqlar">
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="w-4 h-4" /> Mahsulot Qo'shish
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Yangi mahsulot</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nomi</FormLabel>
-                      <FormControl><Input placeholder="Ray-Ban Aviator..." {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid grid-cols-2 gap-4">
+        {!isSeller && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="w-4 h-4" /> Mahsulot Qo'shish
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Yangi mahsulot</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="sku"
+                    name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Artikul (SKU)</FormLabel>
-                        <FormControl><Input placeholder="RB-3025" {...field} value={field.value || ''} /></FormControl>
+                        <FormLabel>Nomi</FormLabel>
+                        <FormControl><Input placeholder="Ray-Ban Aviator..." {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                   <FormField
-                    control={form.control}
-                    name="categoryId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Kategoriya</FormLabel>
-                        <Select onValueChange={(val) => field.onChange(Number(val))} value={field.value?.toString()}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Tanlang" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {categories?.map((cat: any) => (
-                              <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="costPrice"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Tan Narxi (UZS)</FormLabel>
-                        <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="price"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Sotuv Narxi (UZS)</FormLabel>
-                        <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={createProduct.isPending}>
-                  {createProduct.isPending ? "Saqlanmoqda..." : "Saqlash"}
-                </Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="sku"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Artikul (SKU)</FormLabel>
+                          <FormControl><Input placeholder="RB-3025" {...field} value={field.value || ''} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                     <FormField
+                      control={form.control}
+                      name="categoryId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Kategoriya</FormLabel>
+                          <Select onValueChange={(val) => field.onChange(Number(val))} value={field.value?.toString()}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Tanlang" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {categories?.map((cat: any) => (
+                                <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="costPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tan Narxi (UZS)</FormLabel>
+                          <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="price"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Sotuv Narxi (UZS)</FormLabel>
+                          <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={createProduct.isPending}>
+                    {createProduct.isPending ? "Saqlanmoqda..." : "Saqlash"}
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        )}
       </PageHeader>
 
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl border shadow-sm">
@@ -163,15 +169,15 @@ export default function Inventory() {
               <TableHead>SKU</TableHead>
               <TableHead>Brand</TableHead>
               <TableHead>Kategoriya</TableHead>
-              <TableHead className="text-right">Tan Narxi</TableHead>
+              {!isSeller && <TableHead className="text-right">Tan Narxi</TableHead>}
               <TableHead className="text-right">Sotuv Narxi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-               <TableRow><TableCell colSpan={6} className="text-center py-8">Yuklanmoqda...</TableCell></TableRow>
+               <TableRow><TableCell colSpan={isSeller ? 5 : 6} className="text-center py-8">Yuklanmoqda...</TableCell></TableRow>
             ) : products?.length === 0 ? (
-               <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Mahsulot topilmadi</TableCell></TableRow>
+               <TableRow><TableCell colSpan={isSeller ? 5 : 6} className="text-center py-8 text-muted-foreground">Mahsulot topilmadi</TableCell></TableRow>
             ) : (
               products?.map((product: any) => (
                 <TableRow key={product.id} className="group hover:bg-muted/30 transition-colors">
@@ -184,7 +190,11 @@ export default function Inventory() {
                   <TableCell className="font-mono text-sm text-muted-foreground">{product.sku || '-'}</TableCell>
                   <TableCell>{product.brand || '-'}</TableCell>
                   <TableCell>{product.category?.name}</TableCell>
-                  <TableCell className="text-right font-mono text-muted-foreground">{Number(product.costPrice).toLocaleString()}</TableCell>
+                  {!isSeller && (
+                    <TableCell className="text-right font-mono text-muted-foreground">
+                      {Number(product.costPrice).toLocaleString()}
+                    </TableCell>
+                  )}
                   <TableCell className="text-right font-bold text-primary">{Number(product.price).toLocaleString()}</TableCell>
                 </TableRow>
               ))
