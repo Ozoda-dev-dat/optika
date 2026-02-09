@@ -37,7 +37,7 @@ export interface IStorage extends IAuthStorage {
 
   // Sales
   createSale(userId: string, input: SaleInput): Promise<Sale>;
-  getSales(options: { startDate?: Date, endDate?: Date, branchId?: number }): Promise<(Sale & { client: Client | null, user: User, items: (SaleItem & { product: Product })[] })[]>;
+  getSales(options: { startDate?: Date, endDate?: Date, branchId?: number, saleId?: number }): Promise<(Sale & { client: Client | null, user: User, items: (SaleItem & { product: Product })[] })[]>;
   processReturn(userId: string, saleId: number, reason: string): Promise<SaleReturn>;
 
   // Expenses
@@ -656,11 +656,12 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getSales(options: { startDate?: Date, endDate?: Date, branchId?: number }): Promise<(Sale & { client: Client | null, user: User, items: (SaleItem & { product: Product })[] })[]> {
+  async getSales(options: { startDate?: Date, endDate?: Date, branchId?: number, saleId?: number }): Promise<(Sale & { client: Client | null, user: User, items: (SaleItem & { product: Product })[] })[]> {
     const conditions = [];
     if (options.startDate) conditions.push(gte(sales.createdAt, options.startDate));
     if (options.endDate) conditions.push(lte(sales.createdAt, options.endDate));
     if (options.branchId) conditions.push(eq(sales.branchId, options.branchId));
+    if (options.saleId) conditions.push(eq(sales.id, options.saleId));
 
     let query = db.select().from(sales)
       .leftJoin(clients, eq(sales.clientId, clients.id))

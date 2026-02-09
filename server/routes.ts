@@ -166,8 +166,38 @@ export async function registerRoutes(
   });
 
   app.get(api.sales.list.path, requireRole(["admin", "manager", "sales"]), async (req, res) => {
-    const sales = await storage.getSales({});
+    // @ts-ignore
+    const userRole = req.user.role;
+    // @ts-ignore
+    const userBranchId = req.user.branchId;
+
+    let branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
+
+    if (userRole === "sales") {
+      branchId = userBranchId;
+    }
+
+    const sales = await storage.getSales({ branchId });
     res.json(sales);
+  });
+
+  app.get("/api/sales/:id", requireRole(["admin", "manager", "sales"]), async (req, res) => {
+    const saleId = Number(req.params.id);
+    const sales = await storage.getSales({ saleId });
+    const sale = sales[0];
+
+    if (!sale) return res.status(404).json({ message: "Sale not found" });
+
+    // @ts-ignore
+    const userRole = req.user.role;
+    // @ts-ignore
+    const userBranchId = req.user.branchId;
+
+    if (userRole === "sales" && sale.branchId !== userBranchId) {
+      return res.status(403).json({ message: "Forbidden: Access to other branch sales is denied" });
+    }
+
+    res.json(sale);
   });
 
   app.post(api.sales.return.path, requireRole(["admin", "manager"]), async (req, res) => {
