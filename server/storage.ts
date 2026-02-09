@@ -516,13 +516,31 @@ export class DatabaseStorage implements IStorage {
   async createSale(userId: string, input: SaleInput): Promise<Sale> {
     return await db.transaction(async (tx) => {
       let totalAmount = 0;
+      const computedItems = [];
+
       for (const item of input.items) {
-        // Step 3.2: Stock check
+        // Fetch product for pricing and stock check
+        const [product] = await tx.select().from(products).where(eq(products.id, item.productId));
+        if (!product) {
+          throw new Error(`Product with ID ${item.productId} not found`);
+        }
+
         const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, item.productId), eq(inventory.branchId, input.branchId)));
         if (!stock || Number(stock.quantity) < item.quantity) {
-          throw new Error(`Insufficient stock for product ${item.productId}`);
+          throw new Error(`Insufficient stock for product ${product.name}`);
         }
-        totalAmount += (item.price * item.quantity) - item.discount;
+
+        const unitPrice = Number(product.price);
+        const itemSubtotal = (unitPrice * item.quantity) - item.discount;
+        totalAmount += itemSubtotal;
+
+        computedItems.push({
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: unitPrice,
+          total: itemSubtotal,
+          discount: item.discount
+        });
       }
       totalAmount -= input.discount;
 
@@ -535,13 +553,13 @@ export class DatabaseStorage implements IStorage {
         paymentMethod: input.paymentMethod,
       }).returning();
 
-      for (const item of input.items) {
+      for (const item of computedItems) {
         await tx.insert(saleItems).values({
           saleId: sale.id,
           productId: item.productId,
           quantity: item.quantity,
-          price: item.price.toFixed(2),
-          total: ((item.price * item.quantity) - item.discount).toFixed(2),
+          price: item.unitPrice.toFixed(2),
+          total: item.total.toFixed(2),
           discount: item.discount.toFixed(2),
         });
 
@@ -565,16 +583,15 @@ export class DatabaseStorage implements IStorage {
         // Update KPI
         const month = new Date().getMonth() + 1;
         const year = new Date().getFullYear();
-        const itemAmount = (item.price * item.quantity) - item.discount;
         
         const [existingKpi] = await tx.select().from(employeeKpi).where(
           and(eq(employeeKpi.userId, userId), eq(employeeKpi.branchId, input.branchId), eq(employeeKpi.month, month), eq(employeeKpi.year, year))
         );
 
         if (existingKpi) {
-          await tx.update(employeeKpi).set({ totalSales: (Number(existingKpi.totalSales) + itemAmount).toFixed(2), updatedAt: new Date() }).where(eq(employeeKpi.id, existingKpi.id));
+          await tx.update(employeeKpi).set({ totalSales: (Number(existingKpi.totalSales) + item.total).toFixed(2), updatedAt: new Date() }).where(eq(employeeKpi.id, existingKpi.id));
         } else {
-          await tx.insert(employeeKpi).values({ userId, branchId: input.branchId, month, year, totalSales: itemAmount.toFixed(2) });
+          await tx.insert(employeeKpi).values({ userId, branchId: input.branchId, month, year, totalSales: item.total.toFixed(2) });
         }
       }
 

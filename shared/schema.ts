@@ -254,8 +254,7 @@ export const SaleInputSchema = z.object({
   branchId: z.number(),
   items: z.array(z.object({
     productId: z.number(),
-    quantity: z.number(),
-    price: z.number(),
+    quantity: z.number().int().positive("Quantity must be a positive integer"),
     discount: z.number().default(0),
   })),
   paymentMethod: z.enum(["cash", "card", "click", "payme", "transfer"]),
