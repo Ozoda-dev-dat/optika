@@ -201,16 +201,7 @@ export async function registerRoutes(
   });
 
   app.post(api.sales.return.path, requireRole(["admin", "manager"]), async (req, res) => {
-    try {
-      // @ts-ignore
-      const userId = req.user.id;
-      const saleId = Number(req.params.id);
-      const { reason } = api.sales.return.input.parse(req.body);
-      const saleReturn = await storage.processReturn(userId, saleId, reason);
-      res.json(saleReturn);
-    } catch (err: any) {
-      res.status(400).json({ message: err.message });
-    }
+    res.status(410).json({ message: "Returns are not supported." });
   });
 
   // === Expenses ===

@@ -599,61 +599,9 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  // TODO: Cleanup migration for saleReturns and saleReturnItems tables
   async processReturn(userId: string, saleId: number, reason: string): Promise<SaleReturn> {
-    return await db.transaction(async (tx) => {
-      // 1. Fetch sale and items
-      const [sale] = await tx.select().from(sales).where(eq(sales.id, saleId));
-      if (!sale) throw new Error("Sale not found");
-      if (sale.status === 'returned') throw new Error("Sale already returned");
-
-      const items = await tx.select().from(saleItems).where(eq(saleItems.saleId, saleId));
-
-      // 2. Update Sale Status and Recalculate Totals (in this simple TZZ, we mark whole sale as returned)
-      await tx.update(sales).set({ status: 'returned' }).where(eq(sales.id, saleId));
-
-      // 3. Log Return
-      const [saleReturn] = await tx.insert(saleReturns).values({
-        saleId,
-        userId,
-        reason,
-        totalRefunded: sale.totalAmount,
-      }).returning();
-
-      // 4. Restore Inventory and Log Movement
-      for (const item of items) {
-        // Log movement
-        await tx.insert(inventoryMovements).values({
-          productId: item.productId,
-          branchId: sale.branchId,
-          toBranchId: sale.branchId,
-          quantity: item.quantity,
-          type: 'return',
-          reason: `Return of sale #${saleId}`,
-          userId,
-        });
-
-        // Restore inventory
-        const [existingInventory] = await tx.select()
-          .from(inventory)
-          .where(and(eq(inventory.productId, item.productId), eq(inventory.branchId, sale.branchId)));
-
-        if (existingInventory) {
-          await tx.update(inventory)
-            .set({ quantity: sql`${inventory.quantity} + ${item.quantity}` })
-            .where(eq(inventory.id, existingInventory.id));
-        } else {
-          await tx.insert(inventory).values({
-            productId: item.productId,
-            branchId: sale.branchId,
-            quantity: item.quantity,
-          });
-        }
-
-        await this.updateProductStatus(item.productId, tx);
-      }
-
-      return saleReturn;
-    });
+    throw new Error("Returns are not supported.");
   }
 
   async getSales(options: { startDate?: Date, endDate?: Date, branchId?: number, saleId?: number }): Promise<(Sale & { client: Client | null, user: User, items: (SaleItem & { product: Product })[] })[]> {
