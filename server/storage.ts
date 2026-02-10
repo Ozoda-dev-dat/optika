@@ -25,8 +25,12 @@ export interface IStorage extends IAuthStorage {
   // Inventory
   getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product, branch: Branch })[]>;
   updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void>;
-  transferInventory(userId: string, productId: number, fromBranchId: number, toBranchId: number, quantity: number): Promise<void>;
   adjustInventory(userId: string, productId: number, branchId: number, quantityChange: number, reason: string): Promise<void>;
+
+  // Shipments
+  getShipments(branchId?: number): Promise<(Shipment & { fromWarehouse: Branch, toBranch: Branch, items: (ShipmentItem & { product: Product })[] })[]>;
+  createShipment(userId: string, fromWarehouseId: number, toBranchId: number, items: { productId: number, qtySent: number }[]): Promise<Shipment>;
+  receiveShipment(shipmentId: number, receivedItems: { productId: number, qtyReceived: number }[]): Promise<Shipment>;
 
   // Clients
   getClients(search?: string): Promise<(Client & { totalSpent: number })[]>;
@@ -345,56 +349,129 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async transferInventory(userId: string, productId: number, fromBranchId: number, toBranchId: number, quantity: number): Promise<void> {
-    if (quantity <= 0) throw new Error("Quantity must be positive");
-    
-    await db.transaction(async (tx) => {
-      // 1. Check source stock
-      const [sourceStock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, fromBranchId)));
-      if (!sourceStock || Number(sourceStock.quantity) < quantity) {
-        throw new Error("Insufficient stock in source branch");
-      }
+  // Shipments
+  async getShipments(branchId?: number): Promise<(Shipment & { fromWarehouse: Branch, toBranch: Branch, items: (ShipmentItem & { product: Product })[] })[]> {
+    let query = db.select().from(shipments)
+      .innerJoin(branches, eq(shipments.fromWarehouseId, branches.id))
+      .innerJoin(branches, eq(shipments.toBranchId, branches.id))
+      .orderBy(desc(shipments.createdAt));
 
-      // 2. Decrement source
-      await tx.update(inventory)
-        .set({ quantity: sql`${inventory.quantity} - ${quantity}` })
-        .where(eq(inventory.id, sourceStock.id));
+    // This Join logic is complex because of double branch join. 
+    // Let's use simple queries for now to ensure correctness in Fast mode.
+    const allShipments = await db.select().from(shipments).orderBy(desc(shipments.createdAt));
+    const result = [];
 
-      // 3. Log source movement
-      await tx.insert(inventoryMovements).values({
-        productId,
-        branchId: fromBranchId,
-        fromBranchId,
-        toBranchId,
-        quantity: -quantity,
-        type: 'transfer',
-        reason: `Transfer to branch #${toBranchId}`,
-        userId,
+    for (const ship of allShipments) {
+      if (branchId && ship.fromWarehouseId !== branchId && ship.toBranchId !== branchId) continue;
+
+      const [fromBranch] = await db.select().from(branches).where(eq(branches.id, ship.fromWarehouseId));
+      const [toBranch] = await db.select().from(branches).where(eq(branches.id, ship.toBranchId));
+      const items = await db.select().from(shipmentItems)
+        .innerJoin(products, eq(shipmentItems.productId, products.id))
+        .where(eq(shipmentItems.shipmentId, ship.id));
+
+      result.push({
+        ...ship,
+        fromWarehouse: fromBranch,
+        toBranch: toBranch,
+        items: items.map(i => ({ ...i.shipment_items, product: i.products }))
       });
+    }
 
-      // 4. Increment destination
-      const [destStock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, toBranchId)));
-      if (destStock) {
+    return result;
+  }
+
+  async createShipment(userId: string, fromWarehouseId: number, toBranchId: number, items: { productId: number, qtySent: number }[]): Promise<Shipment> {
+    return await db.transaction(async (tx) => {
+      // 1. Decrease warehouse stock
+      for (const item of items) {
+        const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, item.productId), eq(inventory.branchId, fromWarehouseId)));
+        if (!stock || Number(stock.quantity) < item.qtySent) {
+          throw new Error(`Insufficient stock in warehouse for product ID ${item.productId}`);
+        }
+
         await tx.update(inventory)
-          .set({ quantity: sql`${inventory.quantity} + ${quantity}` })
-          .where(eq(inventory.id, destStock.id));
-      } else {
-        await tx.insert(inventory).values({ productId, branchId: toBranchId, quantity });
+          .set({ quantity: sql`${inventory.quantity} - ${item.qtySent}` })
+          .where(eq(inventory.id, stock.id));
+
+        await tx.insert(inventoryMovements).values({
+          productId: item.productId,
+          branchId: fromWarehouseId,
+          fromBranchId: fromWarehouseId,
+          toBranchId: toBranchId,
+          quantity: -item.qtySent,
+          type: 'shipment_sent',
+          reason: `Shipment to branch #${toBranchId}`,
+          userId,
+        });
       }
 
-      // 5. Log destination movement
-      await tx.insert(inventoryMovements).values({
-        productId,
-        branchId: toBranchId,
-        fromBranchId,
+      // 2. Create shipment record
+      const [shipment] = await tx.insert(shipments).values({
+        fromWarehouseId,
         toBranchId,
-        quantity: quantity,
-        type: 'transfer',
-        reason: `Transfer from branch #${fromBranchId}`,
-        userId,
-      });
+        createdBy: userId,
+        status: "pending"
+      }).returning();
 
-      await this.updateProductStatus(productId, tx);
+      // 3. Create items
+      for (const item of items) {
+        await tx.insert(shipmentItems).values({
+          shipmentId: shipment.id,
+          productId: item.productId,
+          qtySent: item.qtySent,
+          qtyReceived: 0
+        });
+      }
+
+      return shipment;
+    });
+  }
+
+  async receiveShipment(shipmentId: number, receivedItems: { productId: number, qtyReceived: number }[]): Promise<Shipment> {
+    return await db.transaction(async (tx) => {
+      const [shipment] = await tx.select().from(shipments).where(eq(shipments.id, shipmentId));
+      if (!shipment) throw new Error("Shipment not found");
+      if (shipment.status === "received" || shipment.status === "cancelled") throw new Error("Shipment already finalized");
+
+      let allFullyReceived = true;
+      let anyReceived = false;
+
+      for (const rItem of receivedItems) {
+        const [item] = await tx.select().from(shipmentItems).where(and(eq(shipmentItems.shipmentId, shipmentId), eq(shipmentItems.productId, rItem.productId)));
+        if (!item) continue;
+
+        const newQtyReceived = Math.min(item.qtySent, item.qtyReceived + rItem.qtyReceived);
+        if (newQtyReceived < item.qtySent) allFullyReceived = false;
+        if (newQtyReceived > 0) anyReceived = true;
+
+        await tx.update(shipmentItems)
+          .set({ qtyReceived: newQtyReceived })
+          .where(eq(shipmentItems.id, item.id));
+
+        // Increase branch stock
+        const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, rItem.productId), eq(inventory.branchId, shipment.toBranchId)));
+        if (stock) {
+          await tx.update(inventory).set({ quantity: sql`${inventory.quantity} + ${rItem.qtyReceived}` }).where(eq(inventory.id, stock.id));
+        } else {
+          await tx.insert(inventory).values({ productId: rItem.productId, branchId: shipment.toBranchId, quantity: rItem.qtyReceived });
+        }
+
+        await tx.insert(inventoryMovements).values({
+          productId: rItem.productId,
+          branchId: shipment.toBranchId,
+          fromBranchId: shipment.fromWarehouseId,
+          toBranchId: shipment.toBranchId,
+          quantity: rItem.qtyReceived,
+          type: 'shipment_received',
+          reason: `Received from shipment #${shipmentId}`,
+          userId: shipment.createdBy, // Or current user? TZZ doesn't specify, but movement needs a user.
+        });
+      }
+
+      const newStatus = allFullyReceived ? "received" : (anyReceived ? "partially_received" : "pending");
+      const [updated] = await tx.update(shipments).set({ status: newStatus }).where(eq(shipments.id, shipmentId)).returning();
+      return updated;
     });
   }
 

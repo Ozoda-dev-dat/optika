@@ -249,16 +249,54 @@ export type SaleReturn = typeof saleReturns.$inferSelect;
 export type SaleReturnItem = typeof saleReturnItems.$inferSelect;
 export type EmployeeKpi = typeof employeeKpi.$inferSelect;
 
-export const SaleInputSchema = z.object({
-  clientId: z.number().optional(),
-  branchId: z.number(),
-  items: z.array(z.object({
-    productId: z.number(),
-    quantity: z.number().int().positive("Quantity must be a positive integer"),
-    discount: z.number().default(0),
-  })),
-  paymentMethod: z.enum(["cash", "card", "click", "payme", "transfer"]),
-  discount: z.number().default(0),
+export const shipmentStatus = ["pending", "partially_received", "received", "cancelled"] as const;
+
+export const shipments = pgTable("shipments", {
+  id: serial("id").primaryKey(),
+  fromWarehouseId: integer("from_warehouse_id").references(() => branches.id).notNull(),
+  toBranchId: integer("to_branch_id").references(() => branches.id).notNull(),
+  status: text("status").notNull().default("pending"),
+  createdBy: varchar("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export type SaleInput = z.infer<typeof SaleInputSchema>;
+export const shipmentItems = pgTable("shipment_items", {
+  id: serial("id").primaryKey(),
+  shipmentId: integer("shipment_id").references(() => shipments.id).notNull(),
+  productId: integer("product_id").references(() => products.id).notNull(),
+  qtySent: integer("qty_sent").notNull(),
+  qtyReceived: integer("qty_received").notNull().default(0),
+});
+
+export const insertShipmentSchema = createInsertSchema(shipments).omit({ id: true, createdAt: true });
+export const insertShipmentItemSchema = createInsertSchema(shipmentItems).omit({ id: true });
+
+export type Shipment = typeof shipments.$inferSelect;
+export type ShipmentItem = typeof shipmentItems.$inferSelect;
+
+export const shipmentsRelations = relations(shipments, ({ one, many }) => ({
+  fromWarehouse: one(branches, {
+    fields: [shipments.fromWarehouseId],
+    references: [branches.id],
+  }),
+  toBranch: one(branches, {
+    fields: [shipments.toBranchId],
+    references: [branches.id],
+  }),
+  creator: one(users, {
+    fields: [shipments.createdBy],
+    references: [users.id],
+  }),
+  items: many(shipmentItems),
+}));
+
+export const shipmentItemsRelations = relations(shipmentItems, ({ one }) => ({
+  shipment: one(shipments, {
+    fields: [shipmentItems.shipmentId],
+    references: [shipments.id],
+  }),
+  product: one(products, {
+    fields: [shipmentItems.productId],
+    references: [products.id],
+  }),
+}));

@@ -101,13 +101,36 @@ export async function registerRoutes(
     })));
   });
 
-  app.post(api.inventory.transfer.path, requireRole(["admin", "manager"]), async (req, res) => {
+  // === Shipments ===
+  app.get("/api/shipments", requireRole(["admin", "manager", "sales"]), async (req, res) => {
+    // @ts-ignore
+    const userRole = req.user.role;
+    // @ts-ignore
+    const userBranchId = req.user.branchId;
+    
+    const branchId = userRole === "admin" ? undefined : userBranchId;
+    const ships = await storage.getShipments(branchId);
+    res.json(ships);
+  });
+
+  app.post("/api/shipments", requireRole(["admin"]), async (req, res) => {
     try {
       // @ts-ignore
       const userId = req.user.id;
-      const { productId, fromBranchId, toBranchId, quantity } = api.inventory.transfer.input.parse(req.body);
-      await storage.transferInventory(userId, productId, fromBranchId, toBranchId, quantity);
-      res.json({ success: true });
+      const { fromWarehouseId, toBranchId, items } = req.body;
+      const shipment = await storage.createShipment(userId, fromWarehouseId, toBranchId, items);
+      res.status(201).json(shipment);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/shipments/:id/receive", requireRole(["admin", "manager", "sales"]), async (req, res) => {
+    try {
+      const shipmentId = Number(req.params.id);
+      const { items } = req.body;
+      const shipment = await storage.receiveShipment(shipmentId, items);
+      res.json(shipment);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
