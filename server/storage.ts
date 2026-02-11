@@ -417,18 +417,18 @@ export class DatabaseStorage implements IStorage {
   async createSale(userId: string, input: SaleInput): Promise<Sale> {
     return await db.transaction(async (tx) => {
       const [branch] = await tx.select().from(branches).where(eq(branches.id, input.branchId));
-      if (!branch) throw new Error("Branch not found");
+      if (!branch) throw new Error("Filial topilmadi");
 
       let subtotal = 0;
       const computedItems = [];
 
       for (const item of input.items) {
         const [product] = await tx.select().from(products).where(eq(products.id, item.productId));
-        if (!product) throw new Error(`Product ${item.productId} not found`);
+        if (!product) throw new Error(`Mahsulot topilmadi: ${item.productId}`);
 
         const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, item.productId), eq(inventory.branchId, input.branchId)));
         if (!stock || Number(stock.quantity) < item.quantity) {
-          throw new Error(`Insufficient stock for ${product.name}`);
+          throw new Error(`${product.name} uchun omborda yetarli qoldiq yo'q`);
         }
 
         const price = Number(product.price);
@@ -444,8 +444,8 @@ export class DatabaseStorage implements IStorage {
       }
 
       const discountPercent = Number(input.discount || 0);
-      if (discountPercent > branch.discountLimitPercent) {
-        throw new Error(`Chegirma miqdori filial limitidan yuqori (${branch.discountLimitPercent}%)`);
+      if (discountPercent > (branch.discountLimitPercent || 10)) {
+        throw new Error(`Chegirma miqdori filial limitidan yuqori (${branch.discountLimitPercent || 10}%)`);
       }
 
       const discountAmount = (subtotal * discountPercent) / 100;
@@ -455,8 +455,8 @@ export class DatabaseStorage implements IStorage {
         branchId: input.branchId,
         clientId: input.clientId,
         userId: userId,
-        totalAmount: finalTotal.toString(),
-        discount: discountAmount.toString(),
+        totalAmount: finalTotal.toFixed(2),
+        discount: discountAmount.toFixed(2),
         paymentMethod: input.paymentMethod,
         status: "completed"
       }).returning();
@@ -485,15 +485,20 @@ export class DatabaseStorage implements IStorage {
         // Update KPI
         const month = new Date().getMonth() + 1;
         const year = new Date().getFullYear();
-        
         const [existingKpi] = await tx.select().from(employeeKpi).where(
           and(eq(employeeKpi.userId, userId), eq(employeeKpi.branchId, input.branchId), eq(employeeKpi.month, month), eq(employeeKpi.year, year))
         );
 
         if (existingKpi) {
-          await tx.update(employeeKpi).set({ totalSales: (Number(existingKpi.totalSales) + Number(item.total)).toFixed(2), updatedAt: new Date() }).where(eq(employeeKpi.id, existingKpi.id));
+          await tx.update(employeeKpi).set({ 
+            totalSales: (Number(existingKpi.totalSales) + Number(item.total)).toFixed(2), 
+            updatedAt: new Date() 
+          }).where(eq(employeeKpi.id, existingKpi.id));
         } else {
-          await tx.insert(employeeKpi).values({ userId, branchId: input.branchId, month, year, totalSales: Number(item.total).toFixed(2) });
+          await tx.insert(employeeKpi).values({ 
+            userId, branchId: input.branchId, month, year, 
+            totalSales: Number(item.total).toFixed(2) 
+          });
         }
       }
 

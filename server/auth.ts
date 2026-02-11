@@ -20,7 +20,7 @@ export function setupAuth(app: Express) {
     secret: process.env.SESSION_SECRET || "optika-secret-key",
     resave: false,
     saveUninitialized: false,
-    store: new PostgresStore({ pool, createTableIfMissing: true }),
+    store: new PostgresStore({ pool, createTableIfMissing: false }),
     cookie: {
       secure: app.get("env") === "production",
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
