@@ -13,6 +13,7 @@ export const branches = pgTable("branches", {
   name: text("name").notNull(),
   address: text("address").notNull(),
   phone: text("phone").notNull(),
+  discountLimitPercent: integer("discount_limit_percent").notNull().default(10),
 });
 
 export const categories = pgTable("categories", {
@@ -235,6 +236,7 @@ export const insertSaleReturnSchema = createInsertSchema(saleReturns).omit({ id:
 export const insertSaleReturnItemSchema = createInsertSchema(saleReturnItems).omit({ id: true });
 
 export const SaleInputSchema = z.object({
+  branchId: z.number(),
   clientId: z.number().optional(),
   paymentMethod: z.string(),
   discount: z.string().optional(),
@@ -286,6 +288,31 @@ export const insertShipmentItemSchema = createInsertSchema(shipmentItems).omit({
 
 export type Shipment = typeof shipments.$inferSelect;
 export type ShipmentItem = typeof shipmentItems.$inferSelect;
+
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  actorUserId: varchar("actor_user_id").references(() => users.id).notNull(),
+  branchId: integer("branch_id").references(() => branches.id),
+  actionType: text("action_type").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id"),
+  metadata: text("metadata_json"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
+export type AuditLog = typeof auditLogs.$inferSelect;
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  actor: one(users, {
+    fields: [auditLogs.actorUserId],
+    references: [users.id],
+  }),
+  branch: one(branches, {
+    fields: [auditLogs.branchId],
+    references: [branches.id],
+  }),
+}));
 
 export const shipmentsRelations = relations(shipments, ({ one, many }) => ({
   fromWarehouse: one(branches, {

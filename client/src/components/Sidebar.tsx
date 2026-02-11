@@ -1,21 +1,22 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Users, ShoppingCart, Package, Building2, Receipt, LogOut, Truck } from "lucide-react";
+import { LayoutDashboard, Users, ShoppingCart, Package, Building2, Receipt, LogOut, Truck, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-
-const menuItems = [
-  { icon: LayoutDashboard, label: "Bosh Sahifa", href: "/" },
-  { icon: ShoppingCart, label: "Sotuv", href: "/sales" },
-  { icon: Users, label: "Mijozlar", href: "/clients" },
-  { icon: Package, label: "Ombor", href: "/inventory" },
-  { icon: Truck, label: "Yuk tashish", href: "/shipments" },
-  { icon: Building2, label: "Filiallar", href: "/branches" },
-  { icon: Receipt, label: "Xarajatlar", href: "/expenses" },
-];
 
 export function Sidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+
+  const menuItems = [
+    { icon: LayoutDashboard, label: "Bosh Sahifa", href: "/" },
+    { icon: ShoppingCart, label: "Sotuv", href: "/sales" },
+    { icon: Users, label: "Mijozlar", href: "/clients" },
+    { icon: Package, label: "Ombor", href: "/inventory" },
+    { icon: Truck, label: "Yuk tashish", href: "/shipments" },
+    { icon: Building2, label: "Filiallar", href: "/branches" },
+    ...(user?.role === "admin" ? [{ icon: ShieldCheck, label: "Audit Loglari", href: "/audit-logs" }] : []),
+    { icon: Receipt, label: "Xarajatlar", href: "/expenses" },
+  ];
 
   return (
     <div className="flex flex-col h-screen w-64 bg-card border-r border-border/40 fixed left-0 top-0 z-50 shadow-sm">

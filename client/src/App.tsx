@@ -16,6 +16,7 @@ import Sales from "@/pages/Sales";
 import Expenses from "@/pages/Expenses";
 import Login from "@/pages/Login";
 import Shipments from "@/pages/Shipments";
+import AuditLogs from "@/pages/AuditLogs";
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -51,6 +52,7 @@ function Router() {
         <Route path="/clients/:id" component={ClientDetails} />
         <Route path="/sales" component={Sales} />
         <Route path="/shipments" component={Shipments} />
+        <Route path="/audit-logs" component={AuditLogs} />
         <Route path="/expenses" component={Expenses} />
         <Route component={NotFound} />
       </Switch>

@@ -266,6 +266,13 @@ export async function registerRoutes(
     res.json(report);
   });
 
+  // === Audit Logs ===
+  app.get("/api/audit-logs", requireRole(["admin"]), async (req, res) => {
+    const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
+    const logs = await storage.getAuditLogs({ branchId });
+    res.json(logs);
+  });
+
   return httpServer;
 }
 
@@ -290,8 +297,8 @@ async function seedDatabase() {
     const acc = await storage.createCategory({ name: "Aksessuarlar", slug: "accessories" });
 
     // Branches
-    const branch1 = await storage.createBranch({ name: "Markaziy Filial", address: "Tashkent, Amir Temur 1", phone: "+998901234567" });
-    const branch2 = await storage.createBranch({ name: "Chilonzor Filial", address: "Tashkent, Chilonzor 5", phone: "+998909876543" });
+    const branch1 = await storage.createBranch({ name: "Markaziy Filial", address: "Tashkent, Amir Temur 1", phone: "+998901234567", discountLimitPercent: 15 });
+    const branch2 = await storage.createBranch({ name: "Chilonzor Filial", address: "Tashkent, Chilonzor 5", phone: "+998909876543", discountLimitPercent: 5 });
 
     // Products
     const p1 = await storage.createProduct({ name: "Ray-Ban Aviator", sku: "RB3025", categoryId: frame.id, price: "1500000", costPrice: "800000", brand: "Ray-Ban", model: "Aviator" });

@@ -24,6 +24,7 @@ export default function Sales() {
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [discount, setDiscount] = useState<string>("0");
 
   const addToCart = (product: any) => {
     const existing = cart.find(item => item.product.id === product.id);
@@ -68,7 +69,7 @@ export default function Sales() {
         discount: 0
       })),
       paymentMethod: paymentMethod as any,
-      discount: 0
+      discount: discount
     };
 
     createSale.mutate(payload, {
@@ -183,9 +184,22 @@ export default function Sales() {
              ))}
            </div>
            
-           <div className="flex justify-between items-center text-lg font-bold">
-             <span>Jami:</span>
-             <span>{total.toLocaleString()} UZS</span>
+           <div className="space-y-2">
+             <div className="flex items-center justify-between text-sm">
+               <span className="text-muted-foreground font-medium">Chegirma (%):</span>
+               <Input 
+                 type="number" 
+                 className="w-20 h-8 text-right font-bold" 
+                 value={discount} 
+                 onChange={(e) => setDiscount(e.target.value)} 
+                 min="0"
+                 max="100"
+               />
+             </div>
+             <div className="flex justify-between items-center text-lg font-bold">
+               <span>Jami:</span>
+               <span>{(total * (1 - Number(discount) / 100)).toLocaleString()} UZS</span>
+             </div>
            </div>
            
            <Button className="w-full py-6 text-lg shadow-xl shadow-primary/20" onClick={handleCheckout} disabled={createSale.isPending}>
