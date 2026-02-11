@@ -234,6 +234,19 @@ export const insertInventoryMovementSchema = createInsertSchema(inventoryMovemen
 export const insertSaleReturnSchema = createInsertSchema(saleReturns).omit({ id: true, createdAt: true });
 export const insertSaleReturnItemSchema = createInsertSchema(saleReturnItems).omit({ id: true });
 
+export const SaleInputSchema = z.object({
+  clientId: z.number().optional(),
+  paymentMethod: z.string(),
+  discount: z.string().optional(),
+  items: z.array(z.object({
+    productId: z.number(),
+    quantity: z.number(),
+    price: z.string(),
+  })),
+});
+
+export type SaleInput = z.infer<typeof SaleInputSchema>;
+
 // === API TYPES ===
 export type Branch = typeof branches.$inferSelect;
 export type Category = typeof categories.$inferSelect;

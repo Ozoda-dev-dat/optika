@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs";
 import { 
   users, branches, products, inventory, clients, prescriptions, sales, saleItems, expenses, categories,
   inventoryMovements, saleReturns, employeeKpi,
@@ -266,9 +267,6 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-import bcrypt from "bcryptjs";
-
-// ... inside DatabaseStorage class
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user;

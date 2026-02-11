@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { setupAuth } from "./auth";
+import bcrypt from "bcryptjs";
 
 // RBAC Middleware
 function requireRole(roles: string[]) {
@@ -33,8 +34,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // Auth Setup
-  await setupAuth(app);
-  registerAuthRoutes(app);
+  setupAuth(app);
 
   // === Branches ===
   app.get(api.branches.list.path, requireRole(["admin", "manager"]), async (req, res) => {
@@ -275,10 +275,11 @@ async function seedDatabase() {
     console.log("Seeding database...");
     
     // Admin user
+    const hashedPassword = await bcrypt.hash("admin123", 10);
     await storage.upsertUser({
       id: "admin-id",
       username: "admin",
-      password: "admin123",
+      password: hashedPassword,
       role: "admin",
       firstName: "Admin",
       lastName: "User"

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Users, ShoppingCart, Package, Building2, Receipt, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, ShoppingCart, Package, Building2, Receipt, LogOut, Truck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -8,6 +8,7 @@ const menuItems = [
   { icon: ShoppingCart, label: "Sotuv", href: "/sales" },
   { icon: Users, label: "Mijozlar", href: "/clients" },
   { icon: Package, label: "Ombor", href: "/inventory" },
+  { icon: Truck, label: "Yuk tashish", href: "/shipments" },
   { icon: Building2, label: "Filiallar", href: "/branches" },
   { icon: Receipt, label: "Xarajatlar", href: "/expenses" },
 ];
