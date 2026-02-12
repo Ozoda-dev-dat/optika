@@ -184,8 +184,45 @@ export async function registerRoutes(
     // @ts-ignore
     const userId = req.user.id;
     const input = api.sales.create.input.parse(req.body);
+
+    const now = new Date();
+    const isClosed = await storage.isMonthClosed(input.branchId, now.getMonth() + 1, now.getFullYear());
+    if (isClosed) {
+      return res.status(403).json({ message: "Bu oy uchun savdolar yopilgan" });
+    }
+
     const sale = await storage.createSale(userId, input);
     res.status(201).json(sale);
+  });
+
+  app.patch("/api/sales/:id/status", requireRole(["admin", "manager"]), async (req, res) => {
+    const saleId = Number(req.params.id);
+    const { status } = req.body;
+    
+    const sale = await storage.getSale(saleId);
+    if (!sale) return res.status(404).json({ message: "Sotuv topilmadi" });
+
+    // Completed sales cannot be modified by status (only returned)
+    if (sale.status === "completed") {
+      return res.status(403).json({ message: "Yakunlangan sotuvni o'zgartirib bo'lmaydi" });
+    }
+
+    const updated = await storage.updateSaleStatus(saleId, status);
+    res.json(updated);
+  });
+
+  app.post("/api/branches/:id/close-month", requireRole(["admin"]), async (req, res) => {
+    const branchId = Number(req.params.id);
+    const { month, year } = req.body;
+    // @ts-ignore
+    const userId = req.user.id;
+
+    try {
+      const closure = await storage.closeMonth(branchId, month, year, userId);
+      res.json(closure);
+    } catch (err: any) {
+      res.status(400).json({ message: "Oy yopishda xatolik yuz berdi" });
+    }
   });
 
   app.get(api.sales.list.path, requireRole(["admin", "manager", "sales"]), async (req, res) => {

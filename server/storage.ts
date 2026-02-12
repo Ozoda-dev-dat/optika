@@ -42,8 +42,14 @@ export interface IStorage extends IAuthStorage {
 
   // Sales
   createSale(userId: string, input: SaleInput): Promise<Sale>;
+  getSale(id: number): Promise<Sale | undefined>;
   getSales(options: { startDate?: Date, endDate?: Date, branchId?: number, saleId?: number }): Promise<(Sale & { client: Client | null, user: User, items: (SaleItem & { product: Product })[] })[]>;
   processReturn(userId: string, saleId: number, reason: string): Promise<SaleReturn>;
+  updateSaleStatus(id: number, status: string): Promise<Sale>;
+
+  // Monthly Closures
+  isMonthClosed(branchId: number, month: number, year: number): Promise<boolean>;
+  closeMonth(branchId: number, month: number, year: number, userId: string): Promise<MonthlyClosure>;
 
   // Audit Logs
   getAuditLogs(options: { startDate?: Date, endDate?: Date, branchId?: number }): Promise<(AuditLog & { actor: User })[]>;
@@ -412,6 +418,35 @@ export class DatabaseStorage implements IStorage {
     await tx.update(products)
       .set({ status: newStatus })
       .where(eq(products.id, productId));
+  }
+
+  async getSale(id: number): Promise<Sale | undefined> {
+    const [sale] = await db.select().from(sales).where(eq(sales.id, id));
+    return sale;
+  }
+
+  async updateSaleStatus(id: number, status: string): Promise<Sale> {
+    const [updated] = await db.update(sales).set({ status }).where(eq(sales.id, id)).returning();
+    return updated;
+  }
+
+  async isMonthClosed(branchId: number, month: number, year: number): Promise<boolean> {
+    const [closure] = await db.select().from(monthlyClosures).where(and(
+      eq(monthlyClosures.branchId, branchId),
+      eq(monthlyClosures.month, month),
+      eq(monthlyClosures.year, year)
+    ));
+    return !!closure;
+  }
+
+  async closeMonth(branchId: number, month: number, year: number, userId: string): Promise<MonthlyClosure> {
+    const [closure] = await db.insert(monthlyClosures).values({
+      branchId,
+      month,
+      year,
+      closedBy: userId,
+    }).returning();
+    return closure;
   }
 
   async createSale(userId: string, input: SaleInput): Promise<Sale> {

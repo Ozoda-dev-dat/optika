@@ -93,9 +93,21 @@ export const sales = pgTable("sales", {
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 12, scale: 2 }).default("0"),
   paymentMethod: text("payment_method").notNull(),
-  status: text("status").default("completed"), // 'completed', 'returned'
-  createdAt: timestamp("created_at").defaultNow(),
+  status: text("status").default("completed").notNull(), // 'draft', 'completed', 'returned'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const monthlyClosures = pgTable("monthly_closures", {
+  id: serial("id").primaryKey(),
+  branchId: integer("branch_id").references(() => branches.id).notNull(),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  closedAt: timestamp("closed_at").defaultNow().notNull(),
+  closedBy: varchar("closed_by").references(() => users.id).notNull(),
+});
+
+export const insertMonthlyClosureSchema = createInsertSchema(monthlyClosures).omit({ id: true, closedAt: true });
+export type MonthlyClosure = typeof monthlyClosures.$inferSelect;
 
 export const saleItems = pgTable("sale_items", {
   id: serial("id").primaryKey(),
