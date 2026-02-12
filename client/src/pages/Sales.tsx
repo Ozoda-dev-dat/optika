@@ -66,7 +66,6 @@ export default function Sales() {
       items: cart.map(item => ({
         productId: item.product.id,
         quantity: item.quantity,
-        discount: 0
       })),
       paymentMethod: paymentMethod as any,
       discount: discount

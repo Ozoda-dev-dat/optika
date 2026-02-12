@@ -255,7 +255,6 @@ export const SaleInputSchema = z.object({
   items: z.array(z.object({
     productId: z.number(),
     quantity: z.number(),
-    price: z.string(),
   })),
 });
 
