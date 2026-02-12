@@ -191,8 +191,12 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Bu oy uchun savdolar yopilgan" });
     }
 
-    const sale = await storage.createSale(userId, input);
-    res.status(201).json(sale);
+    try {
+      const sale = await storage.createSale(userId, input);
+      res.status(201).json(sale);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
   });
 
   app.patch("/api/sales/:id/status", requireRole(["admin", "manager"]), async (req, res) => {

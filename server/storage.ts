@@ -450,6 +450,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSale(userId: string, input: SaleInput): Promise<Sale> {
+    if (!input.items || input.items.length === 0) {
+      throw new Error("Sotuvda kamida bitta mahsulot bo'lishi kerak");
+    }
+
+    for (const item of input.items) {
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        throw new Error("Mahsulot miqdori musbat butun son bo'lishi kerak");
+      }
+    }
+
     return await db.transaction(async (tx) => {
       const [branch] = await tx.select().from(branches).where(eq(branches.id, input.branchId));
       if (!branch) throw new Error("Filial topilmadi");
