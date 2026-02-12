@@ -237,8 +237,22 @@ export async function registerRoutes(
       branchId = userBranchId;
     }
 
-    const sales = await storage.getSales({ branchId });
-    res.json(sales);
+    const salesList = await storage.getSales({ branchId });
+    
+    // Add isLocked flag for the UI
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    
+    const salesWithLock = salesList.map(sale => {
+      const saleDate = new Date(sale.createdAt).getTime();
+      const isOld = saleDate < today;
+      return {
+        ...sale,
+        isLocked: sale.status === "completed" || isOld
+      };
+    });
+    
+    res.json(salesWithLock);
   });
 
   app.get("/api/sales/:id", requireRole(["admin", "manager", "sales"]), async (req, res) => {
