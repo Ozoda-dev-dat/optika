@@ -278,10 +278,6 @@ export async function registerRoutes(
     res.json(sale);
   });
 
-  app.post(api.sales.return.path, requireRole(["admin", "manager"]), async (req, res) => {
-    res.status(410).json({ message: "Returns are not supported." });
-  });
-
   // === Expenses ===
   app.get(api.expenses.list.path, requireRole(["admin", "manager"]), async (req, res) => {
     const expenses = await storage.getExpenses({});

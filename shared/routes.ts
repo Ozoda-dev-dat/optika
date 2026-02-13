@@ -112,19 +112,6 @@ export const api = {
         200: z.any(),
       },
     },
-    transfer: {
-      method: 'POST' as const,
-      path: '/api/inventory/transfer',
-      input: z.object({
-        productId: z.number(),
-        fromBranchId: z.number(),
-        toBranchId: z.number(),
-        quantity: z.number(),
-      }),
-      responses: {
-        200: z.any(),
-      },
-    },
   },
   clients: {
     list: {
@@ -189,16 +176,6 @@ export const api = {
       }).optional(),
       responses: {
         200: z.array(z.any()),
-      },
-    },
-    return: {
-      method: 'POST' as const,
-      path: '/api/sales/:id/return',
-      input: z.object({
-        reason: z.string(),
-      }),
-      responses: {
-        200: z.any(),
       },
     },
   },
