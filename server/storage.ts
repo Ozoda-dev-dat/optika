@@ -13,6 +13,7 @@ import { IAuthStorage } from "./replit_integrations/auth/storage";
 export interface IStorage extends IAuthStorage {
   // Branches
   getBranches(): Promise<Branch[]>;
+  getWarehouseBranch(): Promise<Branch | undefined>;
   createBranch(branch: typeof branches.$inferInsert): Promise<Branch>;
   
   // Categories
@@ -127,6 +128,11 @@ export class DatabaseStorage implements IStorage {
     return newBranch;
   }
 
+  async getWarehouseBranch(): Promise<Branch | undefined> {
+    const [warehouse] = await db.select().from(branches).where(eq(branches.isWarehouse, true));
+    return warehouse;
+  }
+
   async getCategories(): Promise<Category[]> {
     return await db.select().from(categories);
   }
@@ -218,11 +224,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createShipment(userId: string, fromWarehouseId: number, toBranchId: number, items: { productId: number, qtySent: number }[]): Promise<Shipment> {
+    const warehouse = await this.getWarehouseBranch();
+    if (!warehouse) throw new Error("Markaziy ombor topilmadi");
+    const actualFromWarehouseId = warehouse.id;
+
+    if (toBranchId === actualFromWarehouseId) {
+      throw new Error("Omborning o'ziga jo'natma yuborib bo'lmaydi");
+    }
+
     return await db.transaction(async (tx) => {
       for (const item of items) {
-        const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, item.productId), eq(inventory.branchId, fromWarehouseId)));
+        const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, item.productId), eq(inventory.branchId, actualFromWarehouseId)));
         if (!stock || Number(stock.quantity) < item.qtySent) {
-          throw new Error(`Insufficient stock in warehouse for product ID ${item.productId}`);
+          throw new Error(`Omborda mahsulot ID ${item.productId} uchun yetarli qoldiq yo'q`);
         }
 
         await tx.update(inventory)
@@ -231,18 +245,18 @@ export class DatabaseStorage implements IStorage {
 
         await tx.insert(inventoryMovements).values({
           productId: item.productId,
-          branchId: fromWarehouseId,
-          fromBranchId: fromWarehouseId,
+          branchId: actualFromWarehouseId,
+          fromBranchId: actualFromWarehouseId,
           toBranchId: toBranchId,
           quantity: -item.qtySent,
           type: 'shipment_sent',
-          reason: `Shipment to branch #${toBranchId}`,
+          reason: `Filialga jo'natma #${toBranchId}`,
           userId,
         });
       }
 
       const [shipment] = await tx.insert(shipments).values({
-        fromWarehouseId,
+        fromWarehouseId: actualFromWarehouseId,
         toBranchId,
         createdBy: userId,
         status: "pending"

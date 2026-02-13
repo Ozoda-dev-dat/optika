@@ -141,6 +141,14 @@ export async function registerRoutes(
       // @ts-ignore
       const userId = req.user.id;
       const { productId, branchId, quantityChange, reason } = req.body;
+      
+      const branchesList = await storage.getBranches();
+      const targetBranch = branchesList.find(b => b.id === branchId);
+      
+      if (!targetBranch || !targetBranch.isWarehouse) {
+        return res.status(403).json({ message: "Ombor hisobidan tashqari to'g'ridan-to'g'ri inventarizatsiya qilish taqiqlanadi." });
+      }
+
       await storage.adjustInventory(userId, productId, branchId, quantityChange, reason);
       res.json({ success: true });
     } catch (err: any) {
@@ -348,17 +356,21 @@ async function seedDatabase() {
     const acc = await storage.createCategory({ name: "Aksessuarlar", slug: "accessories" });
 
     // Branches
-    const branch1 = await storage.createBranch({ name: "Markaziy Filial", address: "Tashkent, Amir Temur 1", phone: "+998901234567", discountLimitPercent: 15 });
-    const branch2 = await storage.createBranch({ name: "Chilonzor Filial", address: "Tashkent, Chilonzor 5", phone: "+998909876543", discountLimitPercent: 5 });
+    const warehouse = await storage.createBranch({ name: "Markaziy Ombor", address: "Tashkent, Ombor ko'chasi 1", phone: "+998901112233", discountLimitPercent: 0, isWarehouse: true });
+    const branch1 = await storage.createBranch({ name: "Markaziy Filial", address: "Tashkent, Amir Temur 1", phone: "+998901234567", discountLimitPercent: 15, isWarehouse: false });
+    const branch2 = await storage.createBranch({ name: "Chilonzor Filial", address: "Tashkent, Chilonzor 5", phone: "+998909876543", discountLimitPercent: 5, isWarehouse: false });
 
     // Products
     const p1 = await storage.createProduct({ name: "Ray-Ban Aviator", sku: "RB3025", categoryId: frame.id, price: "1500000", costPrice: "800000", brand: "Ray-Ban", model: "Aviator" });
     const p2 = await storage.createProduct({ name: "Blue Cut Lens 1.56", sku: "LENS-BC", categoryId: lens.id, price: "250000", costPrice: "100000", brand: "Hoya", model: "BlueControl" });
 
     // Inventory
-    await storage.updateInventory(p1.id, branch1.id, 10);
-    await storage.updateInventory(p2.id, branch1.id, 50);
-    await storage.updateInventory(p1.id, branch2.id, 5);
+    await storage.updateInventory(p1.id, warehouse.id, 100);
+    await storage.updateInventory(p2.id, warehouse.id, 500);
+    
+    // Initial shipments from warehouse to branches
+    await storage.createShipment("admin-id", warehouse.id, branch1.id, [{ productId: p1.id, qtySent: 10 }, { productId: p2.id, qtySent: 50 }]);
+    await storage.createShipment("admin-id", warehouse.id, branch2.id, [{ productId: p1.id, qtySent: 5 }]);
 
     // Clients
     await storage.createClient({ firstName: "Aziz", lastName: "Rahimov", phone: "+998900000000" });

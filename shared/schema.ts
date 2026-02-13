@@ -14,6 +14,7 @@ export const branches = pgTable("branches", {
   address: text("address").notNull(),
   phone: text("phone").notNull(),
   discountLimitPercent: integer("discount_limit_percent").notNull().default(10),
+  isWarehouse: boolean("is_warehouse").notNull().default(false),
 });
 
 export const categories = pgTable("categories", {
