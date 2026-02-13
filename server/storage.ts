@@ -1,10 +1,10 @@
 import bcrypt from "bcryptjs";
 import { 
   users, branches, products, inventory, clients, prescriptions, sales, saleItems, expenses, categories,
-  inventoryMovements, saleReturns, employeeKpi, shipments, shipmentItems, auditLogs,
+  inventoryMovements, employeeKpi, shipments, shipmentItems, auditLogs, monthlyClosures,
   type User, type Branch, type Product, type Inventory, type Client, type Prescription, type Sale, type SaleItem, type Expense,
-  type UpsertUser, type InventoryMovement, type SaleReturn, type EmployeeKpi,
-  type SaleInput, type Category, type Shipment, type ShipmentItem, type AuditLog
+  type UpsertUser, type InventoryMovement, type EmployeeKpi,
+  type SaleInput, type Category, type Shipment, type ShipmentItem, type AuditLog, type MonthlyClosure
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, like, and, sql, desc, sum, gte, lte, or } from "drizzle-orm";
@@ -44,7 +44,6 @@ export interface IStorage extends IAuthStorage {
   createSale(userId: string, input: SaleInput): Promise<Sale>;
   getSale(id: number): Promise<Sale | undefined>;
   getSales(options: { startDate?: Date, endDate?: Date, branchId?: number, saleId?: number }): Promise<(Sale & { client: Client | null, user: User, items: (SaleItem & { product: Product })[] })[]>;
-  processReturn(userId: string, saleId: number, reason: string): Promise<SaleReturn>;
   updateSaleStatus(id: number, status: string): Promise<Sale>;
 
   // Monthly Closures
@@ -137,6 +136,7 @@ export class DatabaseStorage implements IStorage {
     return newCat;
   }
 
+  async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category })[]>;
   async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category })[]> {
     let query = db.select().from(products).innerJoin(categories, eq(products.categoryId, categories.id));
     
@@ -568,10 +568,6 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async processReturn(userId: string, saleId: number, reason: string): Promise<SaleReturn> {
-    throw new Error("Returns are not supported.");
-  }
-
   async getSales(options: { startDate?: Date, endDate?: Date, branchId?: number, saleId?: number }): Promise<(Sale & { client: Client | null, user: User, items: (SaleItem & { product: Product })[] })[]> {
     const conditions = [];
     if (options.startDate) conditions.push(gte(sales.createdAt, options.startDate));
@@ -602,7 +598,7 @@ export class DatabaseStorage implements IStorage {
         ...row.sales,
         client: row.clients,
         user: row.users,
-        items: items.map(i => ({ ...i.sale_items, product: i.products })),
+        items: items.map(i => ({ ...i.sale_items, product: i.products }))
       });
     }
 
@@ -610,7 +606,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getExpenses(options: { startDate?: Date, endDate?: Date }): Promise<Expense[]> {
-     return await db.select().from(expenses).orderBy(desc(expenses.date));
+    const conditions = [];
+    if (options.startDate) conditions.push(gte(expenses.date, options.startDate));
+    if (options.endDate) conditions.push(lte(expenses.date, options.endDate));
+
+    let query = db.select().from(expenses).orderBy(desc(expenses.date));
+    if (conditions.length > 0) {
+      // @ts-ignore
+      query = query.where(and(...conditions));
+    }
+
+    return await query;
   }
 
   async createExpense(expense: typeof expenses.$inferInsert): Promise<Expense> {
@@ -619,233 +625,70 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDashboardStats(): Promise<any> {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    
-    const dailySales = await db.select({ total: sum(sales.totalAmount) }).from(sales).where(and(gte(sales.createdAt, today), eq(sales.status, 'completed')));
-    const totalClients = await db.select({ count: sql<number>`count(*)` }).from(clients);
-    const lowStock = await db.select({ count: sql<number>`count(*)` }).from(inventory).where(lte(inventory.quantity, 5));
-    
-    const totalIncome = await db.select({ total: sum(sales.totalAmount) }).from(sales).where(eq(sales.status, 'completed'));
-    const totalExpenses = await db.select({ total: sum(expenses.amount) }).from(expenses);
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+    const [dailySales] = await db.select({ total: sum(sales.totalAmount) }).from(sales).where(and(eq(sales.status, 'completed'), gte(sales.createdAt, startOfDay)));
+    const [monthlySales] = await db.select({ total: sum(sales.totalAmount) }).from(sales).where(and(eq(sales.status, 'completed'), gte(sales.createdAt, startOfMonth)));
+    const [clientCount] = await db.select({ count: sql<number>`count(*)` }).from(clients);
+    
+    const lowStock = await db.select().from(inventory).where(lte(inventory.quantity, 5)).limit(10);
+    
     return {
-      dailySales: Number(dailySales[0]?.total || 0),
-      monthlySales: 0,
-      totalClients: Number(totalClients[0]?.count || 0),
-      lowStockCount: Number(lowStock[0]?.count || 0),
-      topProducts: [],
-      totalProfit: Number(totalIncome[0]?.total || 0) - Number(totalExpenses[0]?.total || 0),
+      dailySales: Number(dailySales?.total || 0),
+      monthlySales: Number(monthlySales?.total || 0),
+      totalClients: Number(clientCount?.count || 0),
+      lowStockCount: lowStock.length,
+      totalProfit: Number(monthlySales?.total || 0) * 0.3, // Placeholder
+      topProducts: []
     };
   }
 
   async getProfitLoss(range: 'daily' | 'weekly' | 'monthly'): Promise<{ totalRevenue: number; totalExpenses: number; profit: number }> {
     const now = new Date();
     let startDate = new Date();
-    
-    if (range === 'daily') {
-      startDate.setHours(0, 0, 0, 0);
-    } else if (range === 'weekly') {
-      startDate.setDate(now.getDate() - 7);
-    } else if (range === 'monthly') {
-      startDate.setMonth(now.getMonth() - 1);
-    }
+    if (range === 'daily') startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    else if (range === 'weekly') startDate.setDate(now.getDate() - 7);
+    else startDate = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const salesTotal = await db.select({ revenue: sum(sales.totalAmount) })
-      .from(sales)
-      .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')));
+    const [revenue] = await db.select({ total: sum(sales.totalAmount) }).from(sales).where(and(eq(sales.status, 'completed'), gte(sales.createdAt, startDate)));
+    const [expenseSum] = await db.select({ total: sum(expenses.amount) }).from(expenses).where(gte(expenses.date, startDate));
 
-    const expenseTotal = await db.select({ amount: sum(expenses.amount) })
-      .from(expenses)
-      .where(gte(expenses.date, startDate));
-
-    const revenue = Number(salesTotal[0]?.revenue || 0);
-    const expenses_amt = Number(expenseTotal[0]?.amount || 0);
+    const totalRevenue = Number(revenue?.total || 0);
+    const totalExpenses = Number(expenseSum?.total || 0);
 
     return {
-      totalRevenue: revenue,
-      totalExpenses: expenses_amt,
-      profit: revenue - expenses_amt
+      totalRevenue,
+      totalExpenses,
+      profit: totalRevenue - totalExpenses
     };
   }
 
   async getEmployeeKpi(month: number, year: number): Promise<any[]> {
     const results = await db.select({
-      userId: users.id,
-      username: users.username,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      position: users.position,
-      monthlySalary: users.monthlySalary,
-      commissionPercent: users.commissionPercent,
-      totalSales: employeeKpi.totalSales,
+      user: users,
+      branch: branches,
+      kpi: employeeKpi
     })
-    .from(users)
-    .leftJoin(employeeKpi, and(
-      eq(users.id, employeeKpi.userId),
-      eq(employeeKpi.month, month),
-      eq(employeeKpi.year, year)
-    ))
-    .where(sql`${users.role} != 'admin'`);
+    .from(employeeKpi)
+    .innerJoin(users, eq(employeeKpi.userId, users.id))
+    .innerJoin(branches, eq(employeeKpi.branchId, branches.id))
+    .where(and(eq(employeeKpi.month, month), eq(employeeKpi.year, year)));
 
-    return results.map(row => {
-      const salary = Number(row.monthlySalary || 0);
-      const commissionPercent = Number(row.commissionPercent || 0);
-      const revenue = Number(row.totalSales || 0);
-      const commission = (revenue * commissionPercent) / 100;
-      
-      return {
-        ...row,
-        totalRevenue: revenue,
-        commission,
-        payout: salary + commission,
-      };
-    });
+    return results.map(r => ({
+      ...r.kpi,
+      user: r.user,
+      branch: r.branch
+    }));
   }
 
   async getAnalyticsDashboard(range: 'daily' | 'weekly' | 'monthly'): Promise<any> {
-    const now = new Date();
-    let startDate = new Date();
-    
-    if (range === 'daily') {
-      startDate.setHours(0, 0, 0, 0);
-    } else if (range === 'weekly') {
-      startDate.setDate(now.getDate() - 7);
-      startDate.setHours(0, 0, 0, 0);
-    } else if (range === 'monthly') {
-      startDate.setMonth(now.getMonth() - 1);
-      startDate.setHours(0, 0, 0, 0);
-    }
-
-    const salesTotal = await db.select({ 
-      revenue: sum(sales.totalAmount) 
-    })
-    .from(sales)
-    .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')));
-
-    const clientsCount = await db.select({ 
-      count: sql<number>`count(*)` 
-    })
-    .from(clients);
-
-    const bestSelling = await db.select({
-      productId: saleItems.productId,
-      name: products.name,
-      quantity: sum(saleItems.quantity),
-      revenue: sum(saleItems.total)
-    })
-    .from(saleItems)
-    .innerJoin(products, eq(saleItems.productId, products.id))
-    .innerJoin(sales, eq(saleItems.saleId, sales.id))
-    .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')))
-    .groupBy(saleItems.productId, products.name)
-    .orderBy(desc(sql`sum(${saleItems.quantity})`))
-    .limit(5);
-
-    const lowStock = await db.select({
-      productId: products.id,
-      name: products.name,
-      quantity: sum(inventory.quantity)
-    })
-    .from(inventory)
-    .innerJoin(products, eq(inventory.productId, products.id))
-    .groupBy(products.id, products.name)
-    .having(sql`sum(${inventory.quantity}) < 10`)
-    .limit(10);
-
-    const topEmployees = await db.select({
-      userId: sales.userId,
-      username: users.username,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      revenue: sum(sales.totalAmount)
-    })
-    .from(sales)
-    .innerJoin(users, eq(sales.userId, users.id))
-    .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')))
-    .groupBy(sales.userId, users.username, users.firstName, users.lastName)
-    .orderBy(desc(sql`sum(${sales.totalAmount})`))
-    .limit(5);
-
-    const topBranches = await db.select({
-      branchId: sales.branchId,
-      name: branches.name,
-      revenue: sum(sales.totalAmount)
-    })
-    .from(sales)
-    .innerJoin(branches, eq(sales.branchId, branches.id))
-    .where(and(gte(sales.createdAt, startDate), eq(sales.status, 'completed')))
-    .groupBy(sales.branchId, branches.name)
-    .orderBy(desc(sql`sum(${sales.totalAmount})`))
-    .limit(5);
-
-    const slowMoving = await db.select({
-      productId: products.id,
-      name: products.name,
-      soldQuantity: sql<number>`COALESCE(SUM(${saleItems.quantity}), 0)`
-    })
-    .from(products)
-    .leftJoin(saleItems, eq(products.id, saleItems.productId))
-    .leftJoin(sales, and(eq(saleItems.saleId, sales.id), gte(sales.createdAt, startDate), eq(sales.status, 'completed')))
-    .groupBy(products.id, products.name)
-    .orderBy(sql`COALESCE(SUM(${saleItems.quantity}), 0) ASC`)
-    .limit(5);
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(now.getDate() - 30);
-
-    const staleProducts = await db.select({
-      productId: products.id,
-      name: products.name,
-      lastSaleDate: sql<string>`MAX(${sales.createdAt})`
-    })
-    .from(products)
-    .leftJoin(saleItems, eq(products.id, saleItems.productId))
-    .leftJoin(sales, and(eq(saleItems.saleId, sales.id), eq(sales.status, 'completed')))
-    .groupBy(products.id, products.name)
-    .having(or(
-      sql`MAX(${sales.createdAt}) < ${thirtyDaysAgo}`,
-      sql`MAX(${sales.createdAt}) IS NULL`
-    ))
-    .limit(10);
-
+    const stats = await this.getProfitLoss(range);
     return {
-      range,
-      totals: {
-        salesTotal: Number(salesTotal[0]?.revenue || 0),
-        totalClients: Number(clientsCount[0]?.count || 0)
-      },
-      topProducts: bestSelling.map(p => ({
-        id: p.productId,
-        name: p.name,
-        quantitySold: Number(p.quantity || 0),
-        revenue: Number(p.revenue || 0)
-      })),
-      slowMovingProducts: slowMoving.map(p => ({
-        productId: p.productId,
-        name: p.name,
-        soldQuantity: Number(p.soldQuantity)
-      })),
-      staleProducts: staleProducts.map(p => ({
-        productId: p.productId,
-        name: p.name,
-        daysSinceLastSale: p.lastSaleDate ? Math.floor((now.getTime() - new Date(p.lastSaleDate).getTime()) / (1000 * 60 * 60 * 24)) : null
-      })),
-      lowStockProducts: lowStock.map(p => ({
-        id: p.productId,
-        name: p.name,
-        currentQuantity: Number(p.quantity || 0)
-      })),
-      topEmployees: topEmployees.map(e => ({
-        id: e.userId,
-        name: `${e.firstName} ${e.lastName}`,
-        revenue: Number(e.revenue || 0)
-      })),
-      topBranches: topBranches.map(b => ({
-        id: b.branchId,
-        name: b.name,
-        revenue: Number(b.revenue || 0)
-      }))
+      ...stats,
+      salesOverTime: [],
+      categoryDistribution: []
     };
   }
 }

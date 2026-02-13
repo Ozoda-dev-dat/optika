@@ -206,30 +206,6 @@ export const salesRelations = relations(sales, ({ one, many }) => ({
     references: [users.id],
   }),
   items: many(saleItems),
-  returns: many(saleReturns),
-}));
-
-export const saleReturnsRelations = relations(saleReturns, ({ one, many }) => ({
-  sale: one(sales, {
-    fields: [saleReturns.saleId],
-    references: [sales.id],
-  }),
-  user: one(users, {
-    fields: [saleReturns.userId],
-    references: [users.id],
-  }),
-  items: many(saleReturnItems),
-}));
-
-export const saleReturnItemsRelations = relations(saleReturnItems, ({ one }) => ({
-  saleReturn: one(saleReturns, {
-    fields: [saleReturnItems.saleReturnId],
-    references: [saleReturns.id],
-  }),
-  product: one(products, {
-    fields: [saleReturnItems.productId],
-    references: [products.id],
-  }),
 }));
 
 // === INSERT SCHEMAS ===
@@ -243,9 +219,6 @@ export const insertPrescriptionSchema = createInsertSchema(prescriptions).omit({
 export const insertSaleSchema = createInsertSchema(sales).omit({ id: true, createdAt: true });
 export const insertSaleItemSchema = createInsertSchema(saleItems).omit({ id: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, date: true });
-export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({ id: true, createdAt: true });
-export const insertSaleReturnSchema = createInsertSchema(saleReturns).omit({ id: true, createdAt: true });
-export const insertSaleReturnItemSchema = createInsertSchema(saleReturnItems).omit({ id: true });
 
 export const SaleInputSchema = z.object({
   branchId: z.number(),
@@ -271,8 +244,6 @@ export type Sale = typeof sales.$inferSelect;
 export type SaleItem = typeof saleItems.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
-export type SaleReturn = typeof saleReturns.$inferSelect;
-export type SaleReturnItem = typeof saleReturnItems.$inferSelect;
 export type EmployeeKpi = typeof employeeKpi.$inferSelect;
 
 export const shipmentStatus = ["pending", "partially_received", "received", "cancelled"] as const;

@@ -16,7 +16,7 @@ import {
   expenses
 } from './schema';
 
-export type { Branch, SaleInput, Category, Product, Inventory, Client, Prescription, Sale, SaleItem, Expense, InventoryMovement, SaleReturn, EmployeeKpi } from './schema';
+export type { Branch, SaleInput, Category, Product, Inventory, Client, Prescription, Sale, SaleItem, Expense, InventoryMovement, EmployeeKpi } from './schema';
 
 export const errorSchemas = {
   validation: z.object({

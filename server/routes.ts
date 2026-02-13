@@ -108,7 +108,7 @@ export async function registerRoutes(
     // @ts-ignore
     const userBranchId = req.user.branchId;
     
-    const branchId = userRole === "admin" ? undefined : userBranchId;
+    const branchId = userRole === "admin" ? undefined : (userBranchId as number | undefined);
     const ships = await storage.getShipments(branchId);
     res.json(ships);
   });
@@ -238,7 +238,7 @@ export async function registerRoutes(
     let branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
 
     if (userRole === "sales") {
-      branchId = userBranchId;
+      branchId = userBranchId as number | undefined;
     }
 
     const salesList = await storage.getSales({ branchId });
