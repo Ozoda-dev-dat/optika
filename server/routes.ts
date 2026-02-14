@@ -129,8 +129,64 @@ export async function registerRoutes(
     try {
       const shipmentId = Number(req.params.id);
       const { items } = req.body;
-      const shipment = await storage.receiveShipment(shipmentId, items);
-      res.json(shipment);
+
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "Mahsulotlar ro'yxati bo'sh bo'lishi mumkin emas." });
+      }
+
+      const shipment = await storage.getShipments().then(ships => ships.find(s => s.id === shipmentId));
+      if (!shipment) return res.status(404).json({ message: "Jo'natma topilmadi" });
+
+      // @ts-ignore
+      const userRole = req.user.role;
+      // @ts-ignore
+      const userBranchId = req.user.branchId;
+
+      if (userRole === "sales" && shipment.toBranchId !== userBranchId) {
+        return res.status(403).json({ message: "Siz ushbu jo'natmani qabul qilish huquqiga ega emassiz." });
+      }
+
+      if (shipment.status === "cancelled") {
+        return res.status(400).json({ message: "Bekor qilingan jo'natmani qabul qilib bo'lmaydi." });
+      }
+
+      if (shipment.status === "received") {
+        return res.status(400).json({ message: "Ushbu jo'natma allaqachon to'liq qabul qilingan." });
+      }
+
+      // Defensive validation for items
+      for (const rItem of items) {
+        if (rItem.qtyReceived < 0) {
+          return res.status(400).json({ message: "Qabul qilinadigan miqdor manfiy bo'lishi mumkin emas." });
+        }
+        const shipItem = shipment.items.find(i => i.productId === rItem.productId);
+        if (!shipItem) {
+          return res.status(400).json({ message: `Jo'natmada mahsulot (ID: ${rItem.productId}) topilmadi.` });
+        }
+        if (shipItem.qtyReceived + rItem.qtyReceived > shipItem.qtySent) {
+          return res.status(400).json({ message: `Mahsulot (ID: ${rItem.productId}) uchun yuborilgan miqdordan ko'p qabul qilib bo'lmaydi.` });
+        }
+      }
+
+      const updatedShipment = await storage.receiveShipment(shipmentId, items);
+
+      // Log audit event
+      // @ts-ignore
+      const userId = req.user.id;
+      await storage.createAuditLog({
+        actorUserId: userId,
+        branchId: shipment.toBranchId,
+        actionType: "SHIPMENT_RECEIVED",
+        entityType: "shipment",
+        entityId: shipmentId,
+        metadata: JSON.stringify({
+          shipmentId,
+          receivedItems: items,
+          status: updatedShipment.status
+        })
+      });
+
+      res.json(updatedShipment);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
