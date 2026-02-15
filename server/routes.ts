@@ -198,11 +198,10 @@ export async function registerRoutes(
       const userId = req.user.id;
       const { productId, branchId, quantityChange, reason } = req.body;
       
-      const branchesList = await storage.getBranches();
-      const targetBranch = branchesList.find(b => b.id === branchId);
+      const warehouseId = await storage.getWarehouseBranchId();
       
-      if (!targetBranch || !targetBranch.isWarehouse) {
-        return res.status(403).json({ message: "Ombor hisobidan tashqari to'g'ridan-to'g'ri inventarizatsiya qilish taqiqlanadi." });
+      if (branchId !== warehouseId) {
+        return res.status(403).json({ message: "Direct inventory adjustments are only allowed for the central warehouse." });
       }
 
       await storage.adjustInventory(userId, productId, branchId, quantityChange, reason);

@@ -14,6 +14,7 @@ export interface IStorage extends IAuthStorage {
   // Branches
   getBranches(): Promise<Branch[]>;
   getWarehouseBranch(): Promise<Branch | undefined>;
+  getWarehouseBranchId(): Promise<number | undefined>;
   createBranch(branch: typeof branches.$inferInsert): Promise<Branch>;
   
   // Categories
@@ -133,6 +134,11 @@ export class DatabaseStorage implements IStorage {
     return warehouse;
   }
 
+  async getWarehouseBranchId(): Promise<number | undefined> {
+    const warehouse = await this.getWarehouseBranch();
+    return warehouse?.id;
+  }
+
   async getCategories(): Promise<Category[]> {
     return await db.select().from(categories);
   }
@@ -184,6 +190,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void> {
+    const warehouseId = await this.getWarehouseBranchId();
+    // Only allow programmatic updates for warehouse unless it's a sale/received shipment handled via other methods
+    // But this method is used in seeding and potentially other places.
+    // To match strict rules, we should be careful.
+    
     const [existing] = await db.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
     
     if (existing) {
@@ -323,6 +334,11 @@ export class DatabaseStorage implements IStorage {
 
   async adjustInventory(userId: string, productId: number, branchId: number, quantityChange: number, reason: string): Promise<void> {
     if (quantityChange === 0) return;
+
+    const warehouseId = await this.getWarehouseBranchId();
+    if (branchId !== warehouseId) {
+      throw new Error("Ombor hisobidan tashqari to'g'ridan-to'g'ri inventarizatsiya qilish taqiqlanadi.");
+    }
 
     await db.transaction(async (tx) => {
       const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
