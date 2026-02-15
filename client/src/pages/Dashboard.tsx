@@ -1,16 +1,20 @@
 import { useDashboardStats } from "@/hooks/use-reports";
 import { StatCard } from "@/components/StatCard";
 import { PageHeader } from "@/components/PageHeader";
-import { Users, ShoppingCart, AlertTriangle, TrendingUp } from "lucide-react";
+import { Users, ShoppingCart, AlertTriangle, TrendingUp, DollarSign } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { useAuth } from "@/hooks/use-auth";
 
 export default function Dashboard() {
   const { data, isLoading } = useDashboardStats();
+  const { user } = useAuth();
 
   if (isLoading) {
     return <div className="p-8 flex justify-center"><div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full"></div></div>;
   }
+
+  const isSeller = user?.role === "sales";
 
   // Mock chart data if real data is complex
   const chartData = [
@@ -35,11 +39,14 @@ export default function Dashboard() {
           trend="+12%"
           trendUp={true}
         />
-        <StatCard
-          title="Oylik Savdo"
-          value={`${data?.monthlySales?.toLocaleString() || 0} UZS`}
-          icon={ShoppingCart}
-        />
+        {!isSeller && (
+          <StatCard
+            title="Jami Foyda"
+            value={`${data?.totalProfit?.toLocaleString() || 0} UZS`}
+            icon={DollarSign}
+            className="border-green-100 bg-green-50/30"
+          />
+        )}
         <StatCard
           title="Jami Mijozlar"
           value={data?.totalClients || 0}

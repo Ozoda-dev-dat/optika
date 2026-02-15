@@ -117,18 +117,33 @@ export default function Inventory() {
                       )}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="costPrice"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Tan Narxi (UZS)</FormLabel>
-                          <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  {!isSeller && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="costPrice"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Tan Narxi (UZS)</FormLabel>
+                            <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="price"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Sotuv Narxi (UZS)</FormLabel>
+                            <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
+                  {isSeller && (
                     <FormField
                       control={form.control}
                       name="price"
@@ -140,7 +155,7 @@ export default function Inventory() {
                         </FormItem>
                       )}
                     />
-                  </div>
+                  )}
                   <Button type="submit" className="w-full" disabled={createProduct.isPending}>
                     {createProduct.isPending ? "Saqlanmoqda..." : "Saqlash"}
                   </Button>
