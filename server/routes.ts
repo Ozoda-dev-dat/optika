@@ -134,7 +134,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Mahsulotlar ro'yxati bo'sh bo'lishi mumkin emas." });
       }
 
-      const shipment = await storage.getShipments().then(ships => ships.find(s => s.id === shipmentId));
+      const shipmentsList = await storage.getShipments();
+      const shipment = shipmentsList.find(s => s.id === shipmentId);
       if (!shipment) return res.status(404).json({ message: "Jo'natma topilmadi" });
 
       // @ts-ignore
@@ -154,17 +155,20 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Ushbu jo'natma allaqachon to'liq qabul qilingan." });
       }
 
-      // Defensive validation for items
+      // Validate items and quantities
       for (const rItem of items) {
-        if (rItem.qtyReceived < 0) {
-          return res.status(400).json({ message: "Qabul qilinadigan miqdor manfiy bo'lishi mumkin emas." });
+        if (!Number.isInteger(rItem.qtyReceived) || rItem.qtyReceived < 0) {
+          return res.status(400).json({ message: "Qabul qilingan miqdor musbat butun son bo'lishi kerak." });
         }
+
         const shipItem = shipment.items.find(i => i.productId === rItem.productId);
         if (!shipItem) {
           return res.status(400).json({ message: `Jo'natmada mahsulot (ID: ${rItem.productId}) topilmadi.` });
         }
-        if (shipItem.qtyReceived + rItem.qtyReceived > shipItem.qtySent) {
-          return res.status(400).json({ message: `Mahsulot (ID: ${rItem.productId}) uchun yuborilgan miqdordan ko'p qabul qilib bo'lmaydi.` });
+
+        const remainingToReceive = shipItem.qtySent - shipItem.qtyReceived;
+        if (rItem.qtyReceived > remainingToReceive) {
+          return res.status(400).json({ message: `Mahsulot (ID: ${rItem.productId}) uchun yuborilgan miqdordan ko'p qabul qilib bo'lmaydi. Qolgan: ${remainingToReceive}` });
         }
       }
 

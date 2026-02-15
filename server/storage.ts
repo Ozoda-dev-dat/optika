@@ -290,44 +290,72 @@ export class DatabaseStorage implements IStorage {
     return await db.transaction(async (tx) => {
       const [shipment] = await tx.select().from(shipments).where(eq(shipments.id, shipmentId));
       if (!shipment) throw new Error("Shipment not found");
-      if (shipment.status === "received" || shipment.status === "cancelled") throw new Error("Shipment already finalized");
+      if (shipment.status === "received" || shipment.status === "cancelled") {
+        throw new Error("Jo'natma yakunlangan yoki bekor qilingan");
+      }
 
       let allFullyReceived = true;
       let anyReceived = false;
 
-      for (const rItem of receivedItems) {
-        const [item] = await tx.select().from(shipmentItems).where(and(eq(shipmentItems.shipmentId, shipmentId), eq(shipmentItems.productId, rItem.productId)));
-        if (!item) continue;
+      const currentShipmentItems = await tx.select().from(shipmentItems).where(eq(shipmentItems.shipmentId, shipmentId));
 
-        const newQtyReceived = Math.min(item.qtySent, item.qtyReceived + rItem.qtyReceived);
-        if (newQtyReceived < item.qtySent) allFullyReceived = false;
-        if (newQtyReceived > 0) anyReceived = true;
-
-        await tx.update(shipmentItems)
-          .set({ qtyReceived: newQtyReceived })
-          .where(eq(shipmentItems.id, item.id));
-
-        const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, rItem.productId), eq(inventory.branchId, shipment.toBranchId)));
-        if (stock) {
-          await tx.update(inventory).set({ quantity: sql`${inventory.quantity} + ${rItem.qtyReceived}` }).where(eq(inventory.id, stock.id));
-        } else {
-          await tx.insert(inventory).values({ productId: rItem.productId, branchId: shipment.toBranchId, quantity: rItem.qtyReceived });
+      for (const shipItem of currentShipmentItems) {
+        const update = receivedItems.find(r => r.productId === shipItem.productId);
+        const addedQty = update ? update.qtyReceived : 0;
+        
+        const newTotalReceived = shipItem.qtyReceived + addedQty;
+        
+        if (newTotalReceived < shipItem.qtySent) {
+          allFullyReceived = false;
+        }
+        if (newTotalReceived > 0) {
+          anyReceived = true;
         }
 
-        await tx.insert(inventoryMovements).values({
-          productId: rItem.productId,
-          branchId: shipment.toBranchId,
-          fromBranchId: shipment.fromWarehouseId,
-          toBranchId: shipment.toBranchId,
-          quantity: rItem.qtyReceived,
-          type: 'shipment_received',
-          reason: `Received from shipment #${shipmentId}`,
-          userId: shipment.createdBy,
-        });
+        if (addedQty > 0) {
+          // Update shipment item
+          await tx.update(shipmentItems)
+            .set({ qtyReceived: newTotalReceived })
+            .where(eq(shipmentItems.id, shipItem.id));
+
+          // Update inventory
+          const [stock] = await tx.select().from(inventory).where(and(
+            eq(inventory.productId, shipItem.productId),
+            eq(inventory.branchId, shipment.toBranchId)
+          ));
+
+          if (stock) {
+            await tx.update(inventory)
+              .set({ quantity: sql`${inventory.quantity} + ${addedQty}` })
+              .where(eq(inventory.id, stock.id));
+          } else {
+            await tx.insert(inventory).values({
+              productId: shipItem.productId,
+              branchId: shipment.toBranchId,
+              quantity: addedQty
+            });
+          }
+
+          // Log movement
+          await tx.insert(inventoryMovements).values({
+            productId: shipItem.productId,
+            branchId: shipment.toBranchId,
+            fromBranchId: shipment.fromWarehouseId,
+            toBranchId: shipment.toBranchId,
+            quantity: addedQty,
+            type: 'shipment_received',
+            reason: `Shipment #${shipmentId} qabul qilindi`,
+            userId: shipment.createdBy, // Ideally use current userId but shipment.createdBy is available
+          });
+        }
       }
 
       const newStatus = allFullyReceived ? "received" : (anyReceived ? "partially_received" : "pending");
-      const [updated] = await tx.update(shipments).set({ status: newStatus }).where(eq(shipments.id, shipmentId)).returning();
+      const [updated] = await tx.update(shipments)
+        .set({ status: newStatus })
+        .where(eq(shipments.id, shipmentId))
+        .returning();
+      
       return updated;
     });
   }
