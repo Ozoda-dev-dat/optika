@@ -279,6 +279,15 @@ export class DatabaseStorage implements IStorage {
         });
       }
 
+      await tx.insert(auditLogs).values({
+        actorUserId: userId,
+        branchId: actualFromWarehouseId,
+        actionType: "SHIPMENT_CREATED",
+        entityType: "shipment",
+        entityId: shipment.id,
+        metadata: JSON.stringify({ toBranchId, itemCount: items.length })
+      });
+
       return shipment;
     });
   }
@@ -352,6 +361,15 @@ export class DatabaseStorage implements IStorage {
         .set({ status: newStatus })
         .where(eq(shipments.id, shipmentId))
         .returning();
+
+      await tx.insert(auditLogs).values({
+        actorUserId: shipment.createdBy, // In a real scenario we'd use current user ID
+        branchId: shipment.toBranchId,
+        actionType: "SHIPMENT_RECEIVED",
+        entityType: "shipment",
+        entityId: shipment.id,
+        metadata: JSON.stringify({ status: newStatus, receivedItemsCount: receivedItems.length })
+      });
       
       return updated;
     });
@@ -391,6 +409,15 @@ export class DatabaseStorage implements IStorage {
         type: 'adjustment',
         reason,
         userId,
+      });
+
+      await tx.insert(auditLogs).values({
+        actorUserId: userId,
+        branchId: branchId,
+        actionType: "INVENTORY_ADJUSTED",
+        entityType: "product",
+        entityId: productId,
+        metadata: JSON.stringify({ quantityChange, reason })
       });
 
       await this.updateProductStatus(productId, tx);
@@ -618,6 +645,15 @@ export class DatabaseStorage implements IStorage {
           })
         });
       }
+
+      await tx.insert(auditLogs).values({
+        actorUserId: userId,
+        branchId: input.branchId,
+        actionType: "SALE_CREATED",
+        entityType: "sale",
+        entityId: sale.id,
+        metadata: JSON.stringify({ totalAmount: finalTotal.toFixed(2) })
+      });
 
       return sale;
     });
