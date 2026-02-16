@@ -191,9 +191,6 @@ export class DatabaseStorage implements IStorage {
 
   async updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void> {
     const warehouseId = await this.getWarehouseBranchId();
-    // Only allow programmatic updates for warehouse unless it's a sale/received shipment handled via other methods
-    // But this method is used in seeding and potentially other places.
-    // To match strict rules, we should be careful.
     
     const [existing] = await db.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
     

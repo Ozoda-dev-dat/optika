@@ -299,7 +299,7 @@ export async function registerRoutes(
     const sale = await storage.getSale(saleId);
     if (!sale) return res.status(404).json({ message: "Sotuv topilmadi" });
 
-    // Completed sales cannot be modified by status (only returned)
+    // Completed sales cannot be modified by status
     if (sale.status === "completed") {
       return res.status(403).json({ message: "Yakunlangan sotuvni o'zgartirib bo'lmaydi" });
     }

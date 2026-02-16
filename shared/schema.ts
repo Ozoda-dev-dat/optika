@@ -53,7 +53,7 @@ export const inventoryMovements = pgTable("inventory_movements", {
   fromBranchId: integer("from_branch_id").references(() => branches.id),
   toBranchId: integer("to_branch_id").references(() => branches.id),
   quantity: integer("quantity").notNull(),
-  type: text("type").notNull(), // 'sale', 'return', 'transfer', 'adjustment', 'received'
+  type: text("type").notNull(), // 'sale', 'transfer', 'adjustment', 'received'
   reason: text("reason"),
   userId: varchar("user_id").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
@@ -94,7 +94,7 @@ export const sales = pgTable("sales", {
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 12, scale: 2 }).default("0"),
   paymentMethod: text("payment_method").notNull(),
-  status: text("status").default("completed").notNull(), // 'draft', 'completed', 'returned'
+  status: text("status").default("completed").notNull(), // 'draft', 'completed'
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -129,24 +129,6 @@ export const employeeKpi = pgTable("employee_kpi", {
   totalSales: decimal("total_sales", { precision: 12, scale: 2 }).notNull().default("0"),
   totalBonus: decimal("total_bonus", { precision: 12, scale: 2 }).notNull().default("0"),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// STEP 3: Sales return support
-export const saleReturns = pgTable("sale_returns", {
-  id: serial("id").primaryKey(),
-  saleId: integer("sale_id").references(() => sales.id).notNull(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  reason: text("reason"),
-  totalRefunded: decimal("total_refunded", { precision: 12, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const saleReturnItems = pgTable("sale_return_items", {
-  id: serial("id").primaryKey(),
-  saleReturnId: integer("sale_return_id").references(() => saleReturns.id).notNull(),
-  productId: integer("product_id").references(() => products.id).notNull(),
-  quantity: integer("quantity").notNull(),
-  refundAmount: decimal("refund_amount", { precision: 12, scale: 2 }).notNull(),
 });
 
 export const expenses = pgTable("expenses", {
