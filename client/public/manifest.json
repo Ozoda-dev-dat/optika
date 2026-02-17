@@ -1,7 +1,7 @@
 {
-  "name": "Uzbek Optics Manager",
-  "short_name": "Optics",
-  "description": "Optical Store Management System for Uzbekistan",
+  "name": "Optika CRM",
+  "short_name": "Optika",
+  "description": "Optical Store Management System",
   "theme_color": "#2563eb",
   "background_color": "#ffffff",
   "display": "standalone",
@@ -10,12 +10,14 @@
     {
       "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

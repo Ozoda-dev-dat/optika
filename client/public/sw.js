@@ -1,4 +1,4 @@
-const CACHE_NAME = "optics-cache-v1";
+const CACHE_NAME = "optika-cache-v1";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -20,20 +20,18 @@ self.addEventListener("fetch", (event) => {
 
   // Cache API GET responses with Stale-While-Revalidate
   if (url.pathname.startsWith("/api/") && event.request.method === "GET") {
-    if (url.pathname.includes("/products") || url.pathname.includes("/inventory") || url.pathname.includes("/sales")) {
-      event.respondWith(
-        caches.open("api-cache").then((cache) => {
-          return cache.match(event.request).then((cachedResponse) => {
-            const fetchPromise = fetch(event.request).then((networkResponse) => {
-              cache.put(event.request, networkResponse.clone());
-              return networkResponse;
-            });
-            return cachedResponse || fetchPromise;
+    event.respondWith(
+      caches.open("api-cache").then((cache) => {
+        return cache.match(event.request).then((cachedResponse) => {
+          const fetchPromise = fetch(event.request).then((networkResponse) => {
+            cache.put(event.request, networkResponse.clone());
+            return networkResponse;
           });
-        })
-      );
-      return;
-    }
+          return cachedResponse || fetchPromise;
+        });
+      })
+    );
+    return;
   }
 
   // Default cache-first for static assets, network-first for others
