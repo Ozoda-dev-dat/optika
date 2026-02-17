@@ -84,7 +84,7 @@ export default function Sales() {
   };
 
   return (
-    <div className="h-[calc(100vh-2rem)] flex flex-col md:flex-row gap-6 animate-in fade-in duration-500">
+    <div className="min-h-[calc(100vh-2rem)] flex flex-col lg:flex-row gap-6 animate-in fade-in duration-500 pb-20 lg:pb-0">
       {/* Left Side: Product Selection */}
       <div className="flex-1 flex flex-col gap-4 overflow-hidden">
         <div className="flex items-center gap-4 bg-card p-4 rounded-xl border shadow-sm shrink-0">
@@ -97,7 +97,7 @@ export default function Sales() {
           />
         </div>
         
-        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
+        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {products?.map((product: any) => (
             <Card key={product.id} className="cursor-pointer hover:shadow-md transition-all hover:border-primary group" onClick={() => addToCart(product)}>
               <CardContent className="p-4 flex flex-col h-full">
@@ -116,7 +116,7 @@ export default function Sales() {
       </div>
 
       {/* Right Side: Cart & Checkout */}
-      <div className="w-full md:w-[400px] flex flex-col bg-card rounded-xl border shadow-lg shrink-0 h-full">
+      <div className="w-full lg:w-[400px] flex flex-col bg-card rounded-xl border shadow-lg shrink-0 lg:h-full max-h-[600px] lg:max-h-none">
         <div className="p-4 border-b space-y-4">
           <h2 className="font-bold text-lg flex items-center gap-2">
             <ShoppingCart className="w-5 h-5" /> Savat
