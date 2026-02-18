@@ -48,12 +48,52 @@ function sanitizeAnalyticsForRole(data: any, role: string) {
   return data;
 }
 
+// Seller Data Isolation Utility
+const FORBIDDEN_SELLER_KEYS = [
+  "costPrice", "buyPrice", "purchasePrice", 
+  "profit", "margin", "markup", "supplierPrice"
+];
+
+function deepSanitizeForSeller(input: any): any {
+  if (Array.isArray(input)) {
+    return input.map(deepSanitizeForSeller);
+  }
+  
+  if (input !== null && typeof input === 'object') {
+    // If it's a Date or other non-plain object, return as is
+    if (input instanceof Date) return input;
+    
+    const sanitized: any = {};
+    for (const [key, value] of Object.entries(input)) {
+      if (!FORBIDDEN_SELLER_KEYS.includes(key)) {
+        sanitized[key] = deepSanitizeForSeller(value);
+      }
+    }
+    return sanitized;
+  }
+  
+  return input;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   // Auth Setup
   setupAuth(app);
+
+  // Seller Data Isolation Middleware
+  app.use((req, res, next) => {
+    const originalJson = res.json;
+    res.json = function (data) {
+      // @ts-ignore
+      if (req.isAuthenticated() && req.user?.role === "sales" && data !== null && data !== undefined) {
+        data = deepSanitizeForSeller(data);
+      }
+      return originalJson.call(this, data);
+    };
+    next();
+  });
 
   // === Branches ===
   app.get(api.branches.list.path, requireRole(["admin", "manager"]), async (req, res) => {
@@ -103,9 +143,7 @@ export async function registerRoutes(
     const categoryId = req.query.categoryId ? Number(req.query.categoryId) : undefined;
     const search = req.query.search as string;
     const products = await storage.getProducts(categoryId, search);
-    // @ts-ignore
-    const role = req.user.role;
-    res.json(products.map(p => sanitizeProductForRole(p, role)));
+    res.json(products);
   });
 
   app.get("/api/products/:id", requireRole(["admin", "manager", "sales", "optometrist"]), async (req, res) => {
@@ -113,9 +151,7 @@ export async function registerRoutes(
     const products = await storage.getProducts();
     const product = products.find(p => p.id === productId);
     if (!product) return res.status(404).json({ message: "Product not found" });
-    // @ts-ignore
-    const role = req.user.role;
-    res.json(sanitizeProductForRole(product, role));
+    res.json(product);
   });
 
   app.post(api.products.create.path, requireRole(["admin", "manager"]), async (req, res) => {
@@ -133,9 +169,7 @@ export async function registerRoutes(
     const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
     const search = req.query.search as string;
     const inv = await storage.getInventory(branchId, search);
-    // @ts-ignore
-    const role = req.user.role;
-    res.json(inv.map(i => sanitizeInventoryItemForRole(i, role)));
+    res.json(inv);
   });
 
   // === Shipments ===
@@ -401,9 +435,7 @@ export async function registerRoutes(
   // === Reports ===
   app.get(api.reports.dashboard.path, requireRole(["admin", "manager"]), async (req, res) => {
     const stats = await storage.getDashboardStats();
-    // @ts-ignore
-    const role = req.user.role;
-    res.json(sanitizeAnalyticsForRole(stats, role));
+    res.json(stats);
   });
 
   app.get("/api/employees/kpi", requireRole(["admin", "manager"]), async (req, res) => {
@@ -418,17 +450,13 @@ export async function registerRoutes(
   app.get("/api/analytics/dashboard", requireRole(["admin", "manager"]), async (req, res) => {
     const range = (req.query.range as 'daily' | 'weekly' | 'monthly') || 'daily';
     const stats = await storage.getAnalyticsDashboard(range);
-    // @ts-ignore
-    const role = req.user.role;
-    res.json(sanitizeAnalyticsForRole(stats, role));
+    res.json(stats);
   });
 
   app.get("/api/finance/profit-loss", requireRole(["admin", "manager"]), async (req, res) => {
     const range = (req.query.range as 'daily' | 'weekly' | 'monthly') || 'daily';
     const report = await storage.getProfitLoss(range);
-    // @ts-ignore
-    const role = req.user.role;
-    res.json(sanitizeAnalyticsForRole(report, role));
+    res.json(report);
   });
 
   // === Audit Logs ===
