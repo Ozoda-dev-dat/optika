@@ -334,23 +334,8 @@ export class DatabaseStorage implements IStorage {
             .set({ qtyReceived: newTotalReceived })
             .where(eq(shipmentItems.id, shipItem.id));
 
-          // Update inventory
-          const [stock] = await tx.select().from(inventory).where(and(
-            eq(inventory.productId, shipItem.productId),
-            eq(inventory.branchId, shipment.toBranchId)
-          ));
-
-          if (stock) {
-            await tx.update(inventory)
-              .set({ quantity: sql`${inventory.quantity} + ${addedQty}` })
-              .where(eq(inventory.id, stock.id));
-          } else {
-            await tx.insert(inventory).values({
-              productId: shipItem.productId,
-              branchId: shipment.toBranchId,
-              quantity: addedQty
-            });
-          }
+          // Update inventory through centralized function
+          await this.updateInventory(shipItem.productId, shipment.toBranchId, addedQty, "SHIPMENT_RECEIVE");
 
           // Log movement
           await tx.insert(inventoryMovements).values({
@@ -361,7 +346,7 @@ export class DatabaseStorage implements IStorage {
             quantity: addedQty,
             type: 'shipment_received',
             reason: `Shipment #${shipmentId} qabul qilindi`,
-            userId: shipment.createdBy, // Ideally use current userId but shipment.createdBy is available
+            userId: shipment.createdBy, 
           });
         }
       }
@@ -394,23 +379,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     await db.transaction(async (tx) => {
-      const [stock] = await tx.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
-      
-      if (quantityChange < 0) {
-        const absChange = Math.abs(quantityChange);
-        if (!stock || Number(stock.quantity) < absChange) {
-          throw new Error("Insufficient stock for negative adjustment");
-        }
-      }
-
-      if (stock) {
-        await tx.update(inventory)
-          .set({ quantity: sql`${inventory.quantity} + ${quantityChange}` })
-          .where(eq(inventory.id, stock.id));
-      } else {
-        if (quantityChange < 0) throw new Error("Cannot decrease non-existent stock");
-        await tx.insert(inventory).values({ productId, branchId, quantity: quantityChange });
-      }
+      await this.updateInventory(productId, branchId, quantityChange, "WAREHOUSE_ADJUST");
 
       await tx.insert(inventoryMovements).values({
         productId,
@@ -604,9 +573,7 @@ export class DatabaseStorage implements IStorage {
           ...item
         });
 
-        await tx.update(inventory)
-          .set({ quantity: sql`${inventory.quantity} - ${item.quantity}` })
-          .where(and(eq(inventory.productId, item.productId), eq(inventory.branchId, input.branchId)));
+        await this.updateInventory(item.productId, input.branchId, -item.quantity, "SALE");
 
         await tx.insert(inventoryMovements).values({
           productId: item.productId,
