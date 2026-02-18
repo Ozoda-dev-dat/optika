@@ -189,9 +189,18 @@ export class DatabaseStorage implements IStorage {
     return results.map(r => ({ ...r.inventory, product: r.products, branch: r.branches }));
   }
 
-  async updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void> {
+  async updateInventory(productId: number, branchId: number, quantityChange: number, context: "WAREHOUSE_ADJUST" | "SHIPMENT_RECEIVE" | "SALE" | "SEED" = "WAREHOUSE_ADJUST"): Promise<void> {
     const warehouseId = await this.getWarehouseBranchId();
     
+    if (context === "WAREHOUSE_ADJUST" && branchId !== warehouseId) {
+      throw new Error("Faqat markaziy omborda inventarizatsiya qilish mumkin.");
+    }
+
+    if (context === "SHIPMENT_RECEIVE" && branchId === warehouseId) {
+      // Typically warehouse doesn't receive shipments from itself, but we allow if needed.
+      // The requirement says "Non-warehouse branches cannot receive stock except through shipment receiving".
+    }
+
     const [existing] = await db.select().from(inventory).where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
     
     if (existing) {
@@ -199,6 +208,7 @@ export class DatabaseStorage implements IStorage {
         .set({ quantity: sql`${inventory.quantity} + ${quantityChange}` })
         .where(eq(inventory.id, existing.id));
     } else {
+      if (quantityChange < 0) throw new Error("Mavjud bo'lmagan qoldiqni kamaytirib bo'lmaydi.");
       await db.insert(inventory).values({
         productId,
         branchId,
@@ -233,11 +243,11 @@ export class DatabaseStorage implements IStorage {
 
   async createShipment(userId: string, fromWarehouseId: number, toBranchId: number, items: { productId: number, qtySent: number }[]): Promise<Shipment> {
     const warehouse = await this.getWarehouseBranch();
-    if (!warehouse) throw new Error("Markaziy ombor topilmadi");
+    if (!warehouse) throw new Error("Markaziy ombor topilmadi. Tizim sozlamalarini tekshiring.");
     const actualFromWarehouseId = warehouse.id;
 
     if (toBranchId === actualFromWarehouseId) {
-      throw new Error("Omborning o'ziga jo'natma yuborib bo'lmaydi");
+      throw new Error("Omborning o'ziga jo'natma yuborib bo'lmaydi.");
     }
 
     return await db.transaction(async (tx) => {

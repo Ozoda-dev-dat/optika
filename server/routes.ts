@@ -57,8 +57,19 @@ export async function registerRoutes(
 
   // === Branches ===
   app.get(api.branches.list.path, requireRole(["admin", "manager"]), async (req, res) => {
-    const branches = await storage.getBranches();
-    res.json(branches);
+    const warehouse = await storage.getWarehouseBranch();
+    if (!warehouse) {
+      console.error("CRITICAL: Markaziy ombor topilmadi. Tizim to'xtatildi.");
+      process.exit(1);
+    }
+    const allBranches = await storage.getBranches();
+    const warehouses = allBranches.filter(b => b.isWarehouse);
+    if (warehouses.length !== 1) {
+      console.error(`CRITICAL: Faqat bitta markaziy ombor bo'lishi kerak. Topildi: ${warehouses.length}`);
+      process.exit(1);
+    }
+
+    res.json(allBranches);
   });
 
   app.post(api.branches.create.path, requireRole(["admin"]), async (req, res) => {
@@ -143,8 +154,12 @@ export async function registerRoutes(
     try {
       // @ts-ignore
       const userId = req.user.id;
-      const { fromWarehouseId, toBranchId, items } = req.body;
-      const shipment = await storage.createShipment(userId, fromWarehouseId, toBranchId, items);
+      // Force fromWarehouseId to be the actual warehouse ID from DB
+      const warehouseId = await storage.getWarehouseBranchId();
+      if (!warehouseId) throw new Error("Markaziy ombor aniqlanmadi.");
+      
+      const { toBranchId, items } = req.body;
+      const shipment = await storage.createShipment(userId, warehouseId, toBranchId, items);
       res.status(201).json(shipment);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
