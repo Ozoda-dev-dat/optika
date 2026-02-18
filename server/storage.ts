@@ -53,7 +53,15 @@ export interface IStorage extends IAuthStorage {
   closeMonth(branchId: number, month: number, year: number, userId: string): Promise<MonthlyClosure>;
 
   // Audit Logs
-  getAuditLogs(options: { startDate?: Date, endDate?: Date, branchId?: number }): Promise<(AuditLog & { actor: User })[]>;
+  getAuditLogs(options: { 
+    startDate?: Date, 
+    endDate?: Date, 
+    branchId?: number,
+    actionType?: string,
+    entityType?: string,
+    offset?: number,
+    limit?: number
+  }): Promise<(AuditLog & { actor: User })[]>;
   createAuditLog(log: typeof auditLogs.$inferInsert): Promise<AuditLog>;
 
   // Expenses
@@ -93,7 +101,15 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getAuditLogs(options: { startDate?: Date, endDate?: Date, branchId?: number }): Promise<(AuditLog & { actor: User })[]> {
+  async getAuditLogs(options: { 
+    startDate?: Date, 
+    endDate?: Date, 
+    branchId?: number,
+    actionType?: string,
+    entityType?: string,
+    offset?: number,
+    limit?: number
+  }): Promise<(AuditLog & { actor: User })[]> {
     let query = db.select({
       log: auditLogs,
       actor: users
@@ -103,6 +119,8 @@ export class DatabaseStorage implements IStorage {
 
     const conditions = [];
     if (options.branchId) conditions.push(eq(auditLogs.branchId, options.branchId));
+    if (options.actionType) conditions.push(eq(auditLogs.actionType, options.actionType));
+    if (options.entityType) conditions.push(eq(auditLogs.entityType, options.entityType));
     if (options.startDate) conditions.push(gte(auditLogs.createdAt, options.startDate));
     if (options.endDate) conditions.push(lte(auditLogs.createdAt, options.endDate));
 
@@ -111,7 +129,14 @@ export class DatabaseStorage implements IStorage {
       query = query.where(and(...conditions));
     }
 
-    const results = await query.orderBy(desc(auditLogs.createdAt));
+    const limit = options.limit || 50;
+    const offset = options.offset || 0;
+
+    const results = await query
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit)
+      .offset(offset);
+
     return results.map(r => ({ ...r.log, actor: r.actor }));
   }
 

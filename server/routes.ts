@@ -399,7 +399,22 @@ export async function registerRoutes(
   // === Audit Logs ===
   app.get("/api/audit-logs", requireRole(["admin"]), async (req, res) => {
     const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
-    const logs = await storage.getAuditLogs({ branchId });
+    const actionType = req.query.actionType as string | undefined;
+    const entityType = req.query.entityType as string | undefined;
+    const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+    const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 50;
+
+    const logs = await storage.getAuditLogs({ 
+      branchId, 
+      actionType, 
+      entityType, 
+      startDate, 
+      endDate,
+      offset: (page - 1) * limit,
+      limit
+    });
     res.json(logs);
   });
 
