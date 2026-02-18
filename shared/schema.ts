@@ -295,13 +295,21 @@ export const shipmentsRelations = relations(shipments, ({ one, many }) => ({
   items: many(shipmentItems),
 }));
 
-export const shipmentItemsRelations = relations(shipmentItems, ({ one }) => ({
+export const shipmentReceiveOps = pgTable("shipment_receive_ops", {
+  id: serial("id").primaryKey(),
+  shipmentId: integer("shipment_id").references(() => shipments.id).notNull(),
+  requestId: text("request_id").notNull(),
+  actorUserId: varchar("actor_user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const shipmentReceiveOpsRelations = relations(shipmentReceiveOps, ({ one }) => ({
   shipment: one(shipments, {
-    fields: [shipmentItems.shipmentId],
+    fields: [shipmentReceiveOps.shipmentId],
     references: [shipments.id],
   }),
-  product: one(products, {
-    fields: [shipmentItems.productId],
-    references: [products.id],
+  actor: one(users, {
+    fields: [shipmentReceiveOps.actorUserId],
+    references: [users.id],
   }),
 }));

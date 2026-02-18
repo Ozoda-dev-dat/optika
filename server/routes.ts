@@ -176,7 +176,11 @@ export async function registerRoutes(
   app.post("/api/shipments/:id/receive", requireRole(["admin", "manager", "sales"]), async (req, res) => {
     try {
       const shipmentId = Number(req.params.id);
-      const { items } = req.body;
+      const { items, requestId } = req.body;
+
+      if (!requestId) {
+        return res.status(400).json({ message: "requestId talab qilinadi." });
+      }
 
       if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "Mahsulotlar ro'yxati bo'sh bo'lishi mumkin emas." });
@@ -190,54 +194,14 @@ export async function registerRoutes(
       const userRole = req.user.role;
       // @ts-ignore
       const userBranchId = req.user.branchId;
+      // @ts-ignore
+      const userId = req.user.id;
 
       if (userRole === "sales" && shipment.toBranchId !== userBranchId) {
         return res.status(403).json({ message: "Siz ushbu jo'natmani qabul qilish huquqiga ega emassiz." });
       }
 
-      if (shipment.status === "cancelled") {
-        return res.status(400).json({ message: "Bekor qilingan jo'natmani qabul qilib bo'lmaydi." });
-      }
-
-      if (shipment.status === "received") {
-        return res.status(400).json({ message: "Ushbu jo'natma allaqachon to'liq qabul qilingan." });
-      }
-
-      // Validate items and quantities
-      for (const rItem of items) {
-        if (!Number.isInteger(rItem.qtyReceived) || rItem.qtyReceived < 0) {
-          return res.status(400).json({ message: "Qabul qilingan miqdor musbat butun son bo'lishi kerak." });
-        }
-
-        const shipItem = shipment.items.find(i => i.productId === rItem.productId);
-        if (!shipItem) {
-          return res.status(400).json({ message: `Jo'natmada mahsulot (ID: ${rItem.productId}) topilmadi.` });
-        }
-
-        const remainingToReceive = shipItem.qtySent - shipItem.qtyReceived;
-        if (rItem.qtyReceived > remainingToReceive) {
-          return res.status(400).json({ message: `Mahsulot (ID: ${rItem.productId}) uchun yuborilgan miqdordan ko'p qabul qilib bo'lmaydi. Qolgan: ${remainingToReceive}` });
-        }
-      }
-
-      const updatedShipment = await storage.receiveShipment(shipmentId, items);
-
-      // Log audit event
-      // @ts-ignore
-      const userId = req.user.id;
-      await storage.createAuditLog({
-        actorUserId: userId,
-        branchId: shipment.toBranchId,
-        actionType: "SHIPMENT_RECEIVED",
-        entityType: "shipment",
-        entityId: shipmentId,
-        metadata: JSON.stringify({
-          shipmentId,
-          receivedItems: items,
-          status: updatedShipment.status
-        })
-      });
-
+      const updatedShipment = await storage.receiveShipment(shipmentId, items, requestId, userId);
       res.json(updatedShipment);
     } catch (err: any) {
       res.status(400).json({ message: err.message });

@@ -302,68 +302,68 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async receiveShipment(shipmentId: number, receivedItems: { productId: number, qtyReceived: number }[]): Promise<Shipment> {
+  async receiveShipment(shipmentId: number, receivedItems: { productId: number, qtyReceived: number }[], requestId: string, actorUserId: string): Promise<Shipment> {
     return await db.transaction(async (tx) => {
+      // Check for idempotency
+      const [existingOp] = await tx.select().from(shipmentReceiveOps).where(and(
+        eq(shipmentReceiveOps.shipmentId, shipmentId),
+        eq(shipmentReceiveOps.requestId, requestId)
+      ));
+      if (existingOp) {
+        const [shipment] = await tx.select().from(shipments).where(eq(shipments.id, shipmentId));
+        return shipment;
+      }
+
       const [shipment] = await tx.select().from(shipments).where(eq(shipments.id, shipmentId));
-      if (!shipment) throw new Error("Shipment not found");
+      if (!shipment) throw new Error("Jo'natma topilmadi");
       if (shipment.status === "received" || shipment.status === "cancelled") {
         throw new Error("Jo'natma yakunlangan yoki bekor qilingan");
       }
-
-      let allFullyReceived = true;
-      let anyReceived = false;
 
       const currentShipmentItems = await tx.select().from(shipmentItems).where(eq(shipmentItems.shipmentId, shipmentId));
 
       for (const shipItem of currentShipmentItems) {
         const update = receivedItems.find(r => r.productId === shipItem.productId);
-        const addedQty = update ? update.qtyReceived : 0;
-        
-        const newTotalReceived = shipItem.qtyReceived + addedQty;
-        
-        if (newTotalReceived < shipItem.qtySent) {
-          allFullyReceived = false;
-        }
-        if (newTotalReceived > 0) {
-          anyReceived = true;
+        const incomingQty = update ? update.qtyReceived : 0;
+        if (incomingQty <= 0) continue;
+
+        const remainingToReceive = shipItem.qtySent - shipItem.qtyReceived;
+        if (incomingQty > remainingToReceive) {
+          throw new Error(`Mahsulot (ID: ${shipItem.productId}) uchun yuborilgan miqdordan ko'p qabul qilib bo'lmaydi.`);
         }
 
-        if (addedQty > 0) {
-          // Update shipment item
-          await tx.update(shipmentItems)
-            .set({ qtyReceived: newTotalReceived })
-            .where(eq(shipmentItems.id, shipItem.id));
+        const newTotalReceived = shipItem.qtyReceived + incomingQty;
+        await tx.update(shipmentItems).set({ qtyReceived: newTotalReceived }).where(eq(shipmentItems.id, shipItem.id));
+        await this.updateInventory(shipItem.productId, shipment.toBranchId, incomingQty, "SHIPMENT_RECEIVE");
 
-          // Update inventory through centralized function
-          await this.updateInventory(shipItem.productId, shipment.toBranchId, addedQty, "SHIPMENT_RECEIVE");
-
-          // Log movement
-          await tx.insert(inventoryMovements).values({
-            productId: shipItem.productId,
-            branchId: shipment.toBranchId,
-            fromBranchId: shipment.fromWarehouseId,
-            toBranchId: shipment.toBranchId,
-            quantity: addedQty,
-            type: 'shipment_received',
-            reason: `Shipment #${shipmentId} qabul qilindi`,
-            userId: shipment.createdBy, 
-          });
-        }
+        await tx.insert(inventoryMovements).values({
+          productId: shipItem.productId,
+          branchId: shipment.toBranchId,
+          fromBranchId: shipment.fromWarehouseId,
+          toBranchId: shipment.toBranchId,
+          quantity: incomingQty,
+          type: 'shipment_received',
+          reason: `Jo'natma #${shipmentId} qabul qilindi (Req: ${requestId})`,
+          userId: actorUserId,
+        });
       }
 
-      const newStatus = allFullyReceived ? "received" : (anyReceived ? "partially_received" : "pending");
-      const [updated] = await tx.update(shipments)
-        .set({ status: newStatus })
-        .where(eq(shipments.id, shipmentId))
-        .returning();
+      const updatedItems = await tx.select().from(shipmentItems).where(eq(shipmentItems.shipmentId, shipmentId));
+      const allFullyReceived = updatedItems.every(i => i.qtyReceived >= i.qtySent);
+      const anyReceived = updatedItems.some(i => i.qtyReceived > 0);
 
-      await tx.insert(auditLogs).values({
-        actorUserId: shipment.createdBy, // In a real scenario we'd use current user ID
+      const newStatus = allFullyReceived ? "received" : (anyReceived ? "partially_received" : "pending");
+      const [updated] = await tx.update(shipments).set({ status: newStatus }).where(eq(shipments.id, shipmentId)).returning();
+
+      await tx.insert(shipmentReceiveOps).values({ shipmentId, requestId, actorUserId });
+
+      await this.createAuditLog({
+        actorUserId,
         branchId: shipment.toBranchId,
         actionType: "SHIPMENT_RECEIVED",
         entityType: "shipment",
         entityId: shipment.id,
-        metadata: JSON.stringify({ status: newStatus, receivedItemsCount: receivedItems.length })
+        metadata: JSON.stringify({ requestId, receivedItems })
       });
       
       return updated;
@@ -566,6 +566,26 @@ export class DatabaseStorage implements IStorage {
         paymentMethod: input.paymentMethod,
         status: "completed"
       }).returning();
+
+      if (discountPercent > 0) {
+        await this.createAuditLog({
+          actorUserId: userId,
+          branchId: input.branchId,
+          actionType: "DISCOUNT_APPLIED",
+          entityType: "sale",
+          entityId: sale.id,
+          metadata: JSON.stringify({ discountPercent, discountAmount: discountAmount.toFixed(2) })
+        });
+      }
+
+      await this.createAuditLog({
+        actorUserId: userId,
+        branchId: input.branchId,
+        actionType: "SALE_CREATED",
+        entityType: "sale",
+        entityId: sale.id,
+        metadata: JSON.stringify({ totalAmount: finalTotal.toFixed(2), itemsCount: computedItems.length })
+      });
 
       for (const item of computedItems) {
         await tx.insert(saleItems).values({
