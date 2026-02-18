@@ -21,33 +21,6 @@ function requireRole(roles: string[]) {
   };
 }
 
-function sanitizeProductForRole(product: any, role: string) {
-  if (role === "sales") {
-    const { costPrice, ...sanitized } = product;
-    return sanitized;
-  }
-  return product;
-}
-
-function sanitizeInventoryItemForRole(item: any, role: string) {
-  if (role === "sales") {
-    const { costPrice, ...product } = item.product || {};
-    return {
-      ...item,
-      product
-    };
-  }
-  return item;
-}
-
-function sanitizeAnalyticsForRole(data: any, role: string) {
-  if (role === "sales") {
-    const { totalProfit, profit, margin, totalCost, ...sanitized } = data;
-    return sanitized;
-  }
-  return data;
-}
-
 // Seller Data Isolation Utility
 const FORBIDDEN_SELLER_KEYS = [
   "costPrice", "buyPrice", "purchasePrice", 
