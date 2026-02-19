@@ -8,7 +8,7 @@ if (!process.env.DATABASE_URL) {
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // Neon uchun ko‘pincha kerak bo‘ladi
+  ssl: { rejectUnauthorized: false }, // Neon uchun ko‘pincha kerak
 });
 
 export const db = drizzle(pool, { schema });
