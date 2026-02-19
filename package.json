@@ -8,6 +8,7 @@
     "build": "tsx script/build.ts",
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "test:edge-cases": "tsx script/test-edge-cases.ts"
   },
