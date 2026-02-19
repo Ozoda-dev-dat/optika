@@ -1,12 +1,12 @@
 import { db } from "./db";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 async function initDatabase() {
   try {
     console.log("Initializing database...");
     
-    // Let drizzle create the tables using the schema
-    console.log("Creating tables using drizzle schema...");
+    // Run migrations
+    await migrate(db, { migrationsFolder: "./migrations" });
     
     console.log("Database initialized successfully!");
   } catch (error) {

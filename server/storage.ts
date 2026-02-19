@@ -12,7 +12,7 @@ import {
   type Inventory,
   type User,
   type NewInventory
-} from "../shared/schema-sqlite";
+} from "../shared/schema";
 import { eq, and, or, like, gte, lte, desc, sql, sum } from "drizzle-orm";
 import { IAuthStorage } from "./replit_integrations/auth/storage";
 
@@ -28,12 +28,20 @@ export interface IStorage extends IAuthStorage {
   createCategory(category: typeof categories.$inferInsert): Promise<Category>;
 
   // Products
-  getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category | null })[]>;
+  getProducts(categoryId?: number, search?: string): Promise<Array<{
+    id: number;
+    name: string;
+    sku: string | null;
+    categoryId: number;
+    price: string;
+    costPrice: string;
+    category: Category | null;
+  }>>;
   createProduct(product: typeof products.$inferInsert): Promise<Product>;
   updateProduct(id: number, data: Partial<typeof products.$inferInsert>, changedByUserId: string, reason?: string): Promise<Product>;
   
   // Inventory
-  getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product, branch: Branch })[]>;
+  getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product | null, branch: Branch | null })[]>;
   updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void>;
   adjustInventory(userId: string, productId: number, branchId: number, quantityChange: number, reason: string): Promise<void>;
 
@@ -91,7 +99,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Products
-  async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category | null })[]> {
+  async getProducts(categoryId?: number, search?: string): Promise<Array<{
+    id: number;
+    name: string;
+    sku: string | null;
+    categoryId: number;
+    price: string;
+    costPrice: string;
+    category: { id: number; name: string; slug: string; } | null;
+  }>> {
     const conditions = [];
     if (categoryId) conditions.push(eq(products.categoryId, categoryId));
     if (search) conditions.push(or(like(products.name, `%${search}%`), like(products.sku, `%${search}%`)));
@@ -101,12 +117,9 @@ export class DatabaseStorage implements IStorage {
         id: products.id,
         name: products.name,
         sku: products.sku,
-        description: products.description,
         categoryId: products.categoryId,
         price: products.price,
-        cost: products.cost,
-        createdAt: products.createdAt,
-        updatedAt: products.updatedAt,
+        costPrice: products.costPrice,
         category: categories
       })
       .from(products)
@@ -142,7 +155,6 @@ export class DatabaseStorage implements IStorage {
         productId: inventory.productId,
         branchId: inventory.branchId,
         quantity: inventory.quantity,
-        updatedAt: inventory.updatedAt,
         product: products,
         branch: branches
       })

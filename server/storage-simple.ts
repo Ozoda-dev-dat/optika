@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { 
   users, branches, products, inventory, categories,
   type User, type Branch, type Product, type Inventory, type Category
-} from "@shared/schema-sqlite";
+} from "@shared/schema";
 import { db } from "./db";
 import { eq, like, and, sql, desc, sum, gte, lte, or } from "drizzle-orm";
 import { IAuthStorage } from "./replit_integrations/auth/storage";
@@ -21,13 +21,13 @@ export interface IStorage extends IAuthStorage {
   deleteCategory(id: number): Promise<void>;
 
   // Products
-  getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category })[]>;
+  getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category | null })[]>;
   createProduct(product: typeof products.$inferInsert): Promise<Product>;
   updateProduct(id: number, data: Partial<typeof products.$inferInsert>, changedByUserId: string, reason?: string): Promise<Product>;
   deleteProduct(id: number): Promise<void>;
   
   // Inventory
-  getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product, branch: Branch })[]>;
+  getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product | null, branch: Branch | null })[]>;
   updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void>;
   adjustInventory(userId: string, productId: number, branchId: number, quantityChange: number, reason: string): Promise<void>;
 }
@@ -47,7 +47,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getWarehouseBranch(): Promise<Branch | undefined> {
-    const [warehouse] = await db.select().from(branches).where(eq(branches.isWarehouse, 1));
+    const [warehouse] = await db.select().from(branches).where(eq(branches.isWarehouse, true));
     return warehouse;
   }
 
@@ -59,7 +59,7 @@ export class DatabaseStorage implements IStorage {
   async createBranch(branch: typeof branches.$inferInsert): Promise<Branch> {
     const result = await db.insert(branches).values({
       ...branch,
-      isWarehouse: branch.isWarehouse ? 1 : 0
+      isWarehouse: branch.isWarehouse
     }).returning();
     return result[0];
   }
@@ -75,20 +75,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Products
-  async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category })[]> {
-    let query = db.select()
-      .from(products)
-      .leftJoin(categories, eq(products.categoryId, categories.id));
-
+  async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category | null })[]> {
     const conditions = [];
     if (categoryId) conditions.push(eq(products.categoryId, categoryId));
     if (search) conditions.push(or(like(products.name, `%${search}%`), like(products.sku, `%${search}%`)));
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
+    const query = db.select()
+      .from(products)
+      .leftJoin(categories, eq(products.categoryId, categories.id));
 
-    const results = await query;
+    const results = conditions.length > 0 ? await query.where(and(...conditions)) : await query;
     return results.map(r => ({ ...r.products, category: r.categories }));
   }
 
@@ -103,21 +99,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Inventory
-  async getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product, branch: Branch })[]> {
-    let query = db.select()
-      .from(inventory)
-      .leftJoin(products, eq(inventory.productId, products.id))
-      .leftJoin(branches, eq(inventory.branchId, branches.id));
-
+  async getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product | null, branch: Branch | null })[]> {
     const conditions = [];
     if (branchId) conditions.push(eq(inventory.branchId, branchId));
     if (search) conditions.push(or(like(products.name, `%${search}%`), like(products.sku, `%${search}%`)));
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
+    const query = db.select()
+      .from(inventory)
+      .leftJoin(products, eq(inventory.productId, products.id))
+      .leftJoin(branches, eq(inventory.branchId, branches.id));
 
-    const results = await query;
+    const results = conditions.length > 0 ? await query.where(and(...conditions)) : await query;
     return results.map(r => ({ 
       ...r.inventory, 
       product: r.products, 

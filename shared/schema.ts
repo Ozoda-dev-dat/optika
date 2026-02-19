@@ -283,6 +283,7 @@ export type Branch = typeof branches.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Inventory = typeof inventory.$inferSelect;
+export type NewInventory = typeof inventory.$inferInsert;
 export type Client = typeof clients.$inferSelect;
 export type Prescription = typeof prescriptions.$inferSelect;
 export type Sale = typeof sales.$inferSelect;
@@ -290,9 +291,6 @@ export type SaleItem = typeof saleItems.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
 export type EmployeeKpi = typeof employeeKpi.$inferSelect;
-export type PriceHistory = typeof priceHistory.$inferSelect;
-export type SalesPayment = typeof salesPayments.$inferSelect;
-export type StockAdjustment = typeof stockAdjustments.$inferSelect;
 
 export const shipmentStatus = ["pending", "partially_received", "received", "cancelled"] as const;
 

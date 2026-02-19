@@ -6,6 +6,8 @@ async function initDatabase() {
     console.log("Initializing database...");
     
     // Create tables directly without migrations for now
+    // Commented out for PostgreSQL
+    /*
     await db.run(`
       CREATE TABLE IF NOT EXISTS branches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,6 +56,7 @@ async function initDatabase() {
         UNIQUE(product_id, branch_id)
       )
     `);
+    */
     
     console.log("Database initialized successfully!");
   } catch (error) {

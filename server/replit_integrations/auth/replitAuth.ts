@@ -2,22 +2,21 @@ import express, { type Express } from "express";
 import session from "express-session";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
-import { pool } from "../../db";
+// import { pool } from "../../db";
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000;
-  const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    pool: pool,
-    createTableIfMissing: false,
-    ttl: sessionTtl / 1000,
-    tableName: "sessions",
-  });
+  // const pgStore = connectPg(session);
+  // const sessionStore = new pgStore({
+  //   pool: pool,
+  //   createTableIfMissing: false,
+  //   ttl: sessionTtl / 1000,
+  //   tableName: "sessions",
+  // });
   return session({
     secret: process.env.SESSION_SECRET!,
-    store: sessionStore,
+    // store: sessionStore,
     resave: false,
     saveUninitialized: false,
     cookie: {

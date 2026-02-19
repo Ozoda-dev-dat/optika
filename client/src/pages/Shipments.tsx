@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function Shipments() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const { data: shipments, isLoading } = useShipments(isAdmin ? undefined : user?.branchId);
+  const { data: shipments, isLoading } = useShipments(isAdmin ? undefined : user?.branchId ?? undefined);
   const { data: branches } = useBranches();
   const { data: products } = useProducts();
   const createShipment = useCreateShipment();

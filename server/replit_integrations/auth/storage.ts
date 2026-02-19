@@ -1,4 +1,4 @@
-import { users, type User, type UpsertUser } from "../../../shared/schema-sqlite";
+import { users, type User, type UpsertUser } from "../../../shared/schema";
 import { db } from "../../db";
 import { eq } from "drizzle-orm";
 
