@@ -1,15 +1,18 @@
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
-import * as schema from "../shared/schema-sqlite";
-import * as dotenv from "dotenv";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import * as schema from "../shared/schema";
 
-dotenv.config();
+const url = process.env.DATABASE_URL;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
+if (!url) {
+  throw new Error("DATABASE_URL is not set in environment variables.");
 }
 
-const sqlitePath = process.env.DATABASE_URL.replace("sqlite:", "");
-const sqlite = new Database(sqlitePath);
+const pool = new Pool({
+  connectionString: url,
+  ssl: process.env.NODE_ENV === "production"
+    ? { rejectUnauthorized: false }
+    : undefined,
+});
 
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(pool, { schema });
