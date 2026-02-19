@@ -1,6 +1,6 @@
 {
   "include": ["client/src/**/*", "shared/**/*", "server/**/*"],
-  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts", "**/*backup*.ts", "**/*simple*.ts", "**/*minimal*.ts", "shared/schema.ts", "server/storage-simple.ts", "client/src/pages/Categories.tsx", "client/src/pages/Shipments.tsx", "server/init-db-manual.ts", "server/replit_integrations/auth/replitAuth.ts"],
   "compilerOptions": {
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",

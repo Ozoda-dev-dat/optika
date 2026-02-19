@@ -1,19 +1,10 @@
-import * as bcrypt from "bcryptjs";
-import { db } from "./db";
+import bcrypt from "bcryptjs";
 import { 
-  branches, 
-  categories, 
-  products, 
-  inventory,
-  users,
-  type Branch,
-  type Category,
-  type Product,
-  type Inventory,
-  type User,
-  type NewInventory
-} from "../shared/schema-sqlite";
-import { eq, and, or, like, gte, lte, desc, sql, sum } from "drizzle-orm";
+  users, branches, products, inventory, categories,
+  type User, type Branch, type Product, type Inventory, type Category
+} from "@shared/schema-sqlite";
+import { db } from "./db";
+import { eq, like, and, sql, desc, sum, gte, lte, or } from "drizzle-orm";
 import { IAuthStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage extends IAuthStorage {
@@ -22,45 +13,41 @@ export interface IStorage extends IAuthStorage {
   getWarehouseBranch(): Promise<Branch | undefined>;
   getWarehouseBranchId(): Promise<number | undefined>;
   createBranch(branch: typeof branches.$inferInsert): Promise<Branch>;
+  deleteBranch(id: number): Promise<void>;
   
   // Categories
   getCategories(): Promise<Category[]>;
   createCategory(category: typeof categories.$inferInsert): Promise<Category>;
+  deleteCategory(id: number): Promise<void>;
 
   // Products
-  getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category | null })[]>;
+  getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category })[]>;
   createProduct(product: typeof products.$inferInsert): Promise<Product>;
   updateProduct(id: number, data: Partial<typeof products.$inferInsert>, changedByUserId: string, reason?: string): Promise<Product>;
+  deleteProduct(id: number): Promise<void>;
   
   // Inventory
   getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product, branch: Branch })[]>;
   updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void>;
   adjustInventory(userId: string, productId: number, branchId: number, quantityChange: number, reason: string): Promise<void>;
-
-  // Audit Logs (placeholder)
-  getAuditLogs(options: { 
-    startDate?: Date, 
-    endDate?: Date, 
-    branchId?: number, 
-    actionType?: string, 
-    entityType?: string, 
-    offset?: number,
-    limit?: number
-  }): Promise<any[]>;
-  createAuditLog(log: any): Promise<any>;
-
-  // Users
-  upsertUser(user: any): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
   // Branches
   async getBranches(): Promise<Branch[]> {
-    return await db.select().from(branches);
+    try {
+      console.log("Fetching branches from database...");
+      const result = await db.select().from(branches);
+      console.log("Branches fetched:", result.length);
+      return result;
+    } catch (error) {
+      console.error("Error in getBranches:", error);
+      throw error;
+    }
   }
 
   async getWarehouseBranch(): Promise<Branch | undefined> {
-    const [warehouse] = await db.select().from(branches).where(eq(branches.isWarehouse, true));
+    const [warehouse] = await db.select().from(branches).where(eq(branches.isWarehouse, 1));
     return warehouse;
   }
 
@@ -70,118 +57,96 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBranch(branch: typeof branches.$inferInsert): Promise<Branch> {
-    const result = await db.insert(branches).values(branch).returning();
+    const result = await db.insert(branches).values({
+      ...branch,
+      isWarehouse: branch.isWarehouse ? 1 : 0
+    }).returning();
     return result[0];
   }
 
   // Categories
   async getCategories(): Promise<Category[]> {
-    try {
-      const result = await db.select().from(categories);
-      return result;
-    } catch (error) {
-      console.error('Error in getCategories:', error);
-      throw error;
-    }
+    return await db.select().from(categories);
   }
 
   async createCategory(category: typeof categories.$inferInsert): Promise<Category> {
-    const [newCategory] = await db.insert(categories).values(category).returning();
-    return newCategory;
+    const result = await db.insert(categories).values(category).returning();
+    return result[0];
   }
 
   // Products
-  async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category | null })[]> {
+  async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category })[]> {
+    let query = db.select()
+      .from(products)
+      .leftJoin(categories, eq(products.categoryId, categories.id));
+
     const conditions = [];
     if (categoryId) conditions.push(eq(products.categoryId, categoryId));
     if (search) conditions.push(or(like(products.name, `%${search}%`), like(products.sku, `%${search}%`)));
 
-    const baseQuery = db
-      .select({
-        id: products.id,
-        name: products.name,
-        sku: products.sku,
-        description: products.description,
-        categoryId: products.categoryId,
-        price: products.price,
-        cost: products.cost,
-        createdAt: products.createdAt,
-        updatedAt: products.updatedAt,
-        category: categories
-      })
-      .from(products)
-      .leftJoin(categories, eq(products.categoryId, categories.id));
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
 
-    const finalQuery = conditions.length > 0 
-      ? baseQuery.where(and(...conditions))
-      : baseQuery;
-
-    const results = await finalQuery;
-    return results;
+    const results = await query;
+    return results.map(r => ({ ...r.products, category: r.categories }));
   }
 
   async createProduct(product: typeof products.$inferInsert): Promise<Product> {
-    const [newProduct] = await db.insert(products).values(product).returning();
-    return newProduct;
+    const result = await db.insert(products).values(product).returning();
+    return result[0];
   }
 
   async updateProduct(id: number, data: Partial<typeof products.$inferInsert>, changedByUserId: string, reason?: string): Promise<Product> {
-    const [updated] = await db.update(products).set(data).where(eq(products.id, id)).returning();
-    return updated;
+    const result = await db.update(products).set(data).where(eq(products.id, id)).returning();
+    return result[0];
   }
 
   // Inventory
   async getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product, branch: Branch })[]> {
+    let query = db.select()
+      .from(inventory)
+      .leftJoin(products, eq(inventory.productId, products.id))
+      .leftJoin(branches, eq(inventory.branchId, branches.id));
+
     const conditions = [];
     if (branchId) conditions.push(eq(inventory.branchId, branchId));
     if (search) conditions.push(or(like(products.name, `%${search}%`), like(products.sku, `%${search}%`)));
 
-    const baseQuery = db
-      .select({
-        id: inventory.id,
-        productId: inventory.productId,
-        branchId: inventory.branchId,
-        quantity: inventory.quantity,
-        updatedAt: inventory.updatedAt,
-        product: products,
-        branch: branches
-      })
-      .from(inventory)
-      .innerJoin(products, eq(inventory.productId, products.id))
-      .innerJoin(branches, eq(inventory.branchId, branches.id));
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
 
-    const finalQuery = conditions.length > 0 
-      ? baseQuery.where(and(...conditions))
-      : baseQuery;
-
-    const results = await finalQuery;
-    return results;
+    const results = await query;
+    return results.map(r => ({ 
+      ...r.inventory, 
+      product: r.products, 
+      branch: r.branches 
+    }));
   }
 
   async updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void> {
-    const [currentInventory] = await db
-      .select()
-      .from(inventory)
-      .where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)))
-      .limit(1);
+    await db.transaction(async (tx) => {
+      const [currentInventory] = await tx
+        .select()
+        .from(inventory)
+        .where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)))
+        .limit(1);
 
-    if (!currentInventory) {
-      throw new Error("Inventory not found");
-    }
+      if (!currentInventory) {
+        throw new Error("Inventory not found");
+      }
 
-    const newQty = Number(currentInventory.quantity) + quantityChange;
-    if (newQty < 0) {
-      throw new Error("Insufficient inventory");
-    }
+      const newQty = Number(currentInventory.quantity) + quantityChange;
+      if (newQty < 0) {
+        throw new Error("Insufficient inventory");
+      }
 
-    const updateData: any = { 
-      quantity: newQty
-    };
-
-    await db
-      .update(inventory)
-      .set(updateData)
-      .where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
+      await tx
+        .update(inventory)
+        .set({ quantity: newQty })
+        .where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
+    });
   }
 
   async adjustInventory(userId: string, productId: number, branchId: number, quantityChange: number, reason: string): Promise<void> {
@@ -189,24 +154,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Auth methods (minimal implementation)
-  async getUser(id: string): Promise<any | undefined> {
+  async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
 
-  async getUserByUsername(username: string): Promise<any | undefined> {
+  async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user;
   }
 
-  async createUser(user: typeof users.$inferInsert): Promise<any> {
-    const [newUser] = await db.insert(users).values(user).returning();
-    return newUser;
+  async createUser(user: typeof users.$inferInsert): Promise<User> {
+    const result = await db.insert(users).values(user).returning();
+    return result[0];
   }
 
-  async updateUser(id: string, data: Partial<typeof users.$inferInsert>): Promise<any> {
-    const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
-    return updated;
+  async updateUser(id: string, data: Partial<typeof users.$inferInsert>): Promise<User> {
+    const result = await db.update(users).set(data).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async upsertUser(user: any): Promise<User> {
+    const existing = await this.getUser(user.id);
+    if (existing) {
+      return await this.updateUser(user.id, user);
+    } else {
+      return await this.createUser(user);
+    }
   }
 
   async deleteUser(id: string): Promise<void> {
@@ -223,33 +197,20 @@ export class DatabaseStorage implements IStorage {
     return await bcrypt.hash(password, 10);
   }
 
-  // Audit Logs (placeholder)
-  async getAuditLogs(options: { 
-    startDate?: Date, 
-    endDate?: Date, 
-    branchId?: number, 
-    actionType?: string, 
-    entityType?: string, 
-    offset?: number,
-    limit?: number
-  }): Promise<any[]> {
-    return [];
-  }
-
-  async createAuditLog(log: any): Promise<any> {
-    return {} as any;
-  }
-
-  async upsertUser(user: any): Promise<any> {
-    const existing = await this.getUser(user.id);
-    if (existing) {
-      return await this.updateUser(user.id, user);
-    } else {
-      return await this.createUser(user);
-    }
-  }
-
   // Placeholder implementations for other methods
+  async deleteBranch(id: number): Promise<void> {
+    await db.delete(branches).where(eq(branches.id, id));
+  }
+
+  // Categories
+  async deleteCategory(id: number): Promise<void> {
+    await db.delete(categories).where(eq(categories.id, id));
+  }
+
+  // Products
+  async deleteProduct(id: number): Promise<void> {
+    await db.delete(products).where(eq(products.id, id));
+  }
   async getShipments(branchId?: number): Promise<any[]> { return []; }
   async createShipment(userId: string, fromWarehouseId: number, toBranchId: number, items: any[]): Promise<any> { return {} as any; }
   async receiveShipment(shipmentId: number, receivedItems: any[]): Promise<any> { return {} as any; }
@@ -281,6 +242,8 @@ export class DatabaseStorage implements IStorage {
   async closeMonth(branchId: number, month: number, year: number, userId: string): Promise<any> { return {} as any; }
   async getExpenses(options: any): Promise<any[]> { return []; }
   async createExpense(expense: any): Promise<any> { return {} as any; }
+  async getAuditLogs(options: any): Promise<any[]> { return []; }
+  async createAuditLog(log: any): Promise<any> { return {} as any; }
 }
 
 export const storage = new DatabaseStorage();

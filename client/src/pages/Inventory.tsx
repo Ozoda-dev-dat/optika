@@ -31,7 +31,7 @@ export default function Inventory() {
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(insertProductSchema),
-    defaultValues: { name: "", sku: "", price: "0", costPrice: "0", categoryId: 0 },
+    defaultValues: { name: "", sku: "", price: "0", costPrice: "0", categoryId: 0, unit: "dona", minStock: 0 },
   });
 
   const onSubmit = (data: ProductFormValues) => {
@@ -156,6 +156,52 @@ export default function Inventory() {
                       )}
                     />
                   )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="unit"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Birlik</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Tanlang" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="dona">Dona</SelectItem>
+                              <SelectItem value="juft">Juft</SelectItem>
+                              <SelectItem value="quti">Quti</SelectItem>
+                              <SelectItem value="marta">Marta</SelectItem>
+                              <SelectItem value="kg">Kg</SelectItem>
+                              <SelectItem value="litr">Litr</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="minStock"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Minimal Qoldiq</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              min="0"
+                              placeholder="0"
+                              {...field} 
+                              onChange={e => field.onChange(parseInt(e.target.value) || 0)} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                   <Button type="submit" className="w-full" disabled={createProduct.isPending}>
                     {createProduct.isPending ? "Saqlanmoqda..." : "Saqlash"}
                   </Button>
@@ -184,15 +230,17 @@ export default function Inventory() {
               <TableHead>SKU</TableHead>
               <TableHead>Brand</TableHead>
               <TableHead>Kategoriya</TableHead>
+              <TableHead>Birlik</TableHead>
+              <TableHead>Min. Qoldiq</TableHead>
               {!isSeller && <TableHead className="text-right">Tan Narxi</TableHead>}
               <TableHead className="text-right">Sotuv Narxi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-               <TableRow><TableCell colSpan={isSeller ? 5 : 6} className="text-center py-8">Yuklanmoqda...</TableCell></TableRow>
+               <TableRow><TableCell colSpan={isSeller ? 7 : 8} className="text-center py-8">Yuklanmoqda...</TableCell></TableRow>
             ) : products?.length === 0 ? (
-               <TableRow><TableCell colSpan={isSeller ? 5 : 6} className="text-center py-8 text-muted-foreground">Mahsulot topilmadi</TableCell></TableRow>
+               <TableRow><TableCell colSpan={isSeller ? 7 : 8} className="text-center py-8 text-muted-foreground">Mahsulot topilmadi</TableCell></TableRow>
             ) : (
               products?.map((product: any) => (
                 <TableRow key={product.id} className="group hover:bg-muted/30 transition-colors">
@@ -205,6 +253,8 @@ export default function Inventory() {
                   <TableCell className="font-mono text-sm text-muted-foreground">{product.sku || '-'}</TableCell>
                   <TableCell>{product.brand || '-'}</TableCell>
                   <TableCell>{product.category?.name}</TableCell>
+                  <TableCell className="text-center capitalize">{product.unit || 'dona'}</TableCell>
+                  <TableCell className="text-center font-mono">{product.minStock || 0}</TableCell>
                   {!isSeller && (
                     <TableCell className="text-right font-mono text-muted-foreground">
                       {Number(product.costPrice).toLocaleString()}

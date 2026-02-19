@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Users, ShoppingCart, Package, Building2, Receipt, LogOut, Truck, ShieldCheck, Menu, X } from "lucide-react";
+import { LayoutDashboard, Users, ShoppingCart, Package, Building2, Receipt, LogOut, Truck, ShieldCheck, Menu, X, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
@@ -17,6 +17,7 @@ export function Sidebar() {
     { icon: Package, label: "Ombor", href: "/inventory" },
     { icon: Truck, label: "Yuk tashish", href: "/shipments" },
     { icon: Building2, label: "Filiallar", href: "/branches" },
+    { icon: Tag, label: "Kategoriyalar", href: "/categories" },
     ...(user?.role === "admin" ? [{ icon: ShieldCheck, label: "Audit Loglari", href: "/audit-logs" }] : []),
     { icon: Receipt, label: "Xarajatlar", href: "/expenses" },
   ];

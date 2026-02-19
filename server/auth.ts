@@ -3,10 +3,9 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
 import session from "express-session";
 import bcrypt from "bcryptjs";
-import { storage } from "./storage";
-import { User as SelectUser } from "@shared/schema";
-import connectPg from "connect-pg-simple";
-import { pool } from "./db";
+import { storage } from "./storage-simple";
+import { User as SelectUser } from "@shared/schema-sqlite";
+import { db } from "./db";
 
 declare global {
   namespace Express {
@@ -15,15 +14,14 @@ declare global {
 }
 
 export function setupAuth(app: Express) {
-  const PostgresStore = connectPg(session);
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "optika-secret-key",
     resave: false,
     saveUninitialized: false,
-    store: new PostgresStore({ pool, createTableIfMissing: false }),
+    store: new session.MemoryStore(),
     cookie: {
-      secure: app.get("env") === "production",
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 1 week
+      httpOnly: true,
     },
   };
 

@@ -1,9 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage-simple";
+import { storage } from "./storage";
+import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth } from "./auth";
-import { insertBranchSchema, insertCategorySchema } from "@shared/schema-sqlite";
 
 // RBAC Middleware
 function requireRole(roles: string[]) {
@@ -51,33 +51,19 @@ export async function registerRoutes(
   });
 
   // Branches
-  app.get("/api/branches", async (req, res) => {
+  app.get(api.branches.list.path, async (req, res) => {
     try {
-      console.log("GET /api/branches called");
       const allBranches = await storage.getBranches();
-      console.log("Branches retrieved:", allBranches.length);
       res.json(allBranches);
     } catch (error) {
-      console.error("Error in GET /api/branches:", error);
       res.status(500).json({ message: "Failed to fetch branches" });
     }
   });
 
-  app.delete("/api/branches/:id", requireRole(["admin"]), async (req, res) => {
+  app.post(api.branches.create.path, requireRole(["admin"]), async (req, res) => {
     try {
-      const { id } = req.params;
-      console.log("DELETE /api/branches/" + id);
-      await storage.deleteBranch(Number(id));
-      res.json({ message: "Branch deleted successfully" });
-    } catch (error) {
-      console.error("Error deleting branch:", error);
-      res.status(500).json({ message: "Failed to delete branch" });
-    }
-  });
-
-  app.post("/api/branches", requireRole(["admin"]), validateInput(insertBranchSchema), async (req, res) => {
-    try {
-      const branch = await storage.createBranch(req.body);
+      const input = api.branches.create.input.parse(req.body);
+      const branch = await storage.createBranch(input);
       res.json(branch);
     } catch (error) {
       res.status(500).json({ message: "Failed to create branch" });
@@ -87,42 +73,10 @@ export async function registerRoutes(
   // Categories
   app.get("/api/categories", async (req, res) => {
     try {
-      console.log("GET /api/categories called");
       const categories = await storage.getCategories();
-      console.log("Categories retrieved:", categories.length);
       res.json(categories);
     } catch (error) {
-      console.error("Error in GET /api/categories:", error);
       res.status(500).json({ message: "Failed to fetch categories" });
-    }
-  });
-
-  app.post("/api/categories", requireRole(["admin"]), validateInput(insertCategorySchema), async (req, res) => {
-    try {
-      const category = await storage.createCategory(req.body);
-      res.json(category);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create category" });
-    }
-  });
-
-  app.delete("/api/categories/:id", requireRole(["admin"]), async (req, res) => {
-    try {
-      const { id } = req.params;
-      await storage.deleteCategory(Number(id));
-      res.json({ message: "Category deleted successfully" });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete category" });
-    }
-  });
-
-  app.delete("/api/products/:id", requireRole(["admin"]), async (req, res) => {
-    try {
-      const { id } = req.params;
-      await storage.deleteProduct(Number(id));
-      res.json({ message: "Product deleted successfully" });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete product" });
     }
   });
 
