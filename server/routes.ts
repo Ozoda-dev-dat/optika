@@ -1,9 +1,13 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { createServer, type Server } from "http";
+import type { Server } from "http";
 import { storage } from "./storage-simple";
 import { z } from "zod";
 import { setupAuth } from "./auth";
-import { insertBranchSchema, insertCategorySchema } from "@shared/schema";
+import {
+  insertBranchSchema,
+  insertCategorySchema,
+  insertProductSchema,
+} from "@shared/schema";
 
 // RBAC Middleware
 function requireRole(roles: string[]) {
@@ -11,11 +15,16 @@ function requireRole(roles: string[]) {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Unauthorized" });
     }
+
     // @ts-ignore
-    const userRole = req.user.role;
-    if (!roles.includes(userRole)) {
-      return res.status(403).json({ message: "Forbidden: Insufficient permissions" });
+    const userRole = req.user?.role;
+
+    if (!userRole || !roles.includes(userRole)) {
+      return res
+        .status(403)
+        .json({ message: "Forbidden: Insufficient permissions" });
     }
+
     next();
   };
 }
@@ -28,9 +37,9 @@ function validateInput<T>(schema: z.ZodSchema<T>) {
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: error.errors 
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
         });
       }
       next(error);
@@ -40,18 +49,20 @@ function validateInput<T>(schema: z.ZodSchema<T>) {
 
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
 ): Promise<Server> {
   // Auth Setup
   setupAuth(app);
 
   // Health check
-  app.get("/api/health", (req, res) => {
+  app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // =========================
   // Branches
-  app.get("/api/branches", async (req, res) => {
+  // =========================
+  app.get("/api/branches", async (_req, res) => {
     try {
       console.log("GET /api/branches called");
       const allBranches = await storage.getBranches();
@@ -62,6 +73,21 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to fetch branches" });
     }
   });
+
+  app.post(
+    "/api/branches",
+    requireRole(["admin"]),
+    validateInput(insertBranchSchema),
+    async (req, res) => {
+      try {
+        const branch = await storage.createBranch(req.body);
+        res.json(branch);
+      } catch (error) {
+        console.error("Error in POST /api/branches:", error);
+        res.status(500).json({ message: "Failed to create branch" });
+      }
+    },
+  );
 
   app.delete("/api/branches/:id", requireRole(["admin"]), async (req, res) => {
     try {
@@ -75,36 +101,35 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/branches", requireRole(["admin"]), validateInput(insertBranchSchema), async (req, res) => {
-    try {
-      const branch = await storage.createBranch(req.body);
-      res.json(branch);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create branch" });
-    }
-  });
-
+  // =========================
   // Categories
-  app.get("/api/categories", async (req, res) => {
+  // =========================
+  app.get("/api/categories", async (_req, res) => {
     try {
       console.log("GET /api/categories called");
-      const categories = await storage.getCategories();
-      console.log("Categories retrieved:", categories.length);
-      res.json(categories);
+      const cats = await storage.getCategories();
+      console.log("Categories retrieved:", cats.length);
+      res.json(cats);
     } catch (error) {
       console.error("Error in GET /api/categories:", error);
       res.status(500).json({ message: "Failed to fetch categories" });
     }
   });
 
-  app.post("/api/categories", requireRole(["admin"]), validateInput(insertCategorySchema), async (req, res) => {
-    try {
-      const category = await storage.createCategory(req.body);
-      res.json(category);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create category" });
-    }
-  });
+  app.post(
+    "/api/categories",
+    requireRole(["admin"]),
+    validateInput(insertCategorySchema),
+    async (req, res) => {
+      try {
+        const category = await storage.createCategory(req.body);
+        res.json(category);
+      } catch (error) {
+        console.error("Error in POST /api/categories:", error);
+        res.status(500).json({ message: "Failed to create category" });
+      }
+    },
+  );
 
   app.delete("/api/categories/:id", requireRole(["admin"]), async (req, res) => {
     try {
@@ -112,9 +137,45 @@ export async function registerRoutes(
       await storage.deleteCategory(Number(id));
       res.json({ message: "Category deleted successfully" });
     } catch (error) {
+      console.error("Error in DELETE /api/categories/:id:", error);
       res.status(500).json({ message: "Failed to delete category" });
     }
   });
+
+  // =========================
+  // Products
+  // =========================
+  app.get("/api/products", async (req, res) => {
+    try {
+      const { categoryId, search } = req.query;
+
+      const list = await storage.getProducts(
+        categoryId ? Number(categoryId) : undefined,
+        typeof search === "string" ? search : undefined,
+      );
+
+      res.json(list);
+    } catch (error) {
+      console.error("Error in GET /api/products:", error);
+      res.status(500).json({ message: "Failed to fetch products" });
+    }
+  });
+
+  // ✅ FIX: POST /api/products (Oldin yo‘q edi, 404 shundan chiqayotgandi)
+  app.post(
+    "/api/products",
+    requireRole(["admin"]),
+    validateInput(insertProductSchema),
+    async (req, res) => {
+      try {
+        const product = await storage.createProduct(req.body);
+        res.json(product);
+      } catch (error) {
+        console.error("Error in POST /api/products:", error);
+        res.status(500).json({ message: "Failed to create product" });
+      }
+    },
+  );
 
   app.delete("/api/products/:id", requireRole(["admin"]), async (req, res) => {
     try {
@@ -122,33 +183,26 @@ export async function registerRoutes(
       await storage.deleteProduct(Number(id));
       res.json({ message: "Product deleted successfully" });
     } catch (error) {
+      console.error("Error in DELETE /api/products/:id:", error);
       res.status(500).json({ message: "Failed to delete product" });
     }
   });
 
-  // Products
-  app.get("/api/products", async (req, res) => {
-    try {
-      const { categoryId, search } = req.query;
-      const products = await storage.getProducts(
-        categoryId ? Number(categoryId) : undefined,
-        search as string
-      );
-      res.json(products);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch products" });
-    }
-  });
-
+  // =========================
   // Inventory
+  // =========================
   app.get("/api/inventory", async (req, res) => {
     try {
-      const { branchId } = req.query;
-      const inventory = await storage.getInventory(
-        branchId ? Number(branchId) : undefined
+      const { branchId, search } = req.query;
+
+      const list = await storage.getInventory(
+        branchId ? Number(branchId) : undefined,
+        typeof search === "string" ? search : undefined,
       );
-      res.json(inventory);
+
+      res.json(list);
     } catch (error) {
+      console.error("Error in GET /api/inventory:", error);
       res.status(500).json({ message: "Failed to fetch inventory" });
     }
   });
