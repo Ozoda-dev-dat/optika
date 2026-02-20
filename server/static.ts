@@ -3,21 +3,16 @@ import express from "express";
 import path from "path";
 
 export function serveStatic(app: Express) {
-  // Vite build chiqargan joy: dist/public
-  const publicDir = path.resolve(process.cwd(), "dist", "public");
+  // Vite build natijasi: dist/index.html va dist/assets/...
+  const distDir = path.resolve(process.cwd(), "dist");
+  const indexHtml = path.join(distDir, "index.html");
 
-  // 1) Static fayllar (assets, icons, manifest, sw.js, va h.k.)
-  app.use(
-    express.static(publicDir, {
-      index: false, // index.html ni fallbackda o'zimiz beramiz
-      maxAge: "1y",
-      immutable: true,
-    }),
-  );
+  // 1) Statik fayllar (assets, favicon, ...)
+  app.use(express.static(distDir));
 
-  // 2) SPA fallback (API va assets yo'llarini tegmasin)
-  // Express 5 uchun: "*" ishlamaydi, regex ishlaydi
-  app.get(/^(?!\/api)(?!\/assets)(?!\/favicon\.png)(?!\/manifest\.json)(?!\/sw\.js)(?!\/icons\/).*/, (_req, res) => {
-    res.sendFile(path.join(publicDir, "index.html"));
+  // 2) SPA fallback (Express 5 uchun "*" emas!)
+  // /api/... emas bo‘lgan hamma narsani index.html ga qaytaramiz
+  app.get(/^\/(?!api).*/, (_req, res) => {
+    res.sendFile(indexHtml);
   });
 }
