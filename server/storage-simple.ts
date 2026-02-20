@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
-import { 
+import {
   users, branches, products, inventory, categories,
   type User, type Branch, type Product, type Inventory, type Category
-} from "@shared/schema";
+} from "@shared/schema-sqlite";
 import { db } from "./db";
 import { eq, like, and, sql, desc, sum, gte, lte, or } from "drizzle-orm";
 import { IAuthStorage } from "./replit_integrations/auth/storage";
@@ -57,12 +57,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBranch(branch: typeof branches.$inferInsert): Promise<Branch> {
-    const result = await db.insert(branches).values({
-      ...branch,
-      isWarehouse: branch.isWarehouse
-    }).returning();
-    return result[0];
-  }
+  const result = await db
+    .insert(branches)
+    .values({
+      name: branch.name,
+      address: branch.address ?? "",
+      phone: branch.phone ?? "",
+      isWarehouse: branch.isWarehouse ?? false,
+    })
+    .returning();
+  return result[0];
+}
 
   // Categories
   async getCategories(): Promise<Category[]> {
@@ -88,10 +93,13 @@ export class DatabaseStorage implements IStorage {
     return results.map(r => ({ ...r.products, category: r.categories }));
   }
 
-  async createProduct(product: typeof products.$inferInsert): Promise<Product> {
-    const result = await db.insert(products).values(product).returning();
-    return result[0];
-  }
+async createProduct(product: typeof products.$inferInsert): Promise<Product> {
+  const result = await db.insert(products).values({
+    ...product,
+    cost: (product as any).cost ?? (product as any).costPrice, // agar UI costPrice yuborsa ham qabul qilsin
+  } as any).returning();
+  return result[0];
+}
 
   async updateProduct(id: number, data: Partial<typeof products.$inferInsert>, changedByUserId: string, reason?: string): Promise<Product> {
     const result = await db.update(products).set(data).where(eq(products.id, id)).returning();
