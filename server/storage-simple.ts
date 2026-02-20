@@ -1,3 +1,4 @@
+// server/storage-simple.ts
 import bcrypt from "bcryptjs";
 import {
   users,
@@ -6,11 +7,13 @@ import {
   inventory,
   categories,
   priceHistory,
+  clients,
   type User,
   type Branch,
   type Product,
   type Inventory,
   type Category,
+  type Client,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, like, and, or } from "drizzle-orm";
@@ -48,11 +51,7 @@ export interface IStorage extends IAuthStorage {
     branchId?: number,
     search?: string,
   ): Promise<(Inventory & { product: Product | null; branch: Branch | null })[]>;
-  updateInventory(
-    productId: number,
-    branchId: number,
-    quantityChange: number,
-  ): Promise<void>;
+  updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void>;
   adjustInventory(
     userId: string,
     productId: number,
@@ -60,6 +59,48 @@ export interface IStorage extends IAuthStorage {
     quantityChange: number,
     reason: string,
   ): Promise<void>;
+
+  // Clients
+  getClients(search?: string): Promise<Client[]>;
+  getClient(id: number): Promise<Client | undefined>;
+  createClient(client: typeof clients.$inferInsert): Promise<Client>;
+  updateClient(id: number, data: Partial<typeof clients.$inferInsert>): Promise<Client | undefined>;
+
+  // (Qolganlari keyin)
+  getShipments(_branchId?: number): Promise<any[]>;
+  createShipment(
+    _userId: string,
+    _fromWarehouseId: number,
+    _toBranchId: number,
+    _items: any[],
+  ): Promise<any>;
+  receiveShipment(_shipmentId: number, _receivedItems: any[]): Promise<any>;
+  addPrescription(_prescription: any): Promise<any>;
+  createSale(_userId: string, _input: any): Promise<any>;
+  getSale(_id: number): Promise<any>;
+  getSales(_options: any): Promise<any[]>;
+  updateSaleStatus(_id: number, _status: string): Promise<any>;
+  createPriceHistory(_entry: any): Promise<any>;
+  getPriceHistory(_productId: number): Promise<any[]>;
+  createSalesPayment(_payment: any): Promise<any>;
+  getSalesPayments(_saleId: number): Promise<any[]>;
+  createStockAdjustment(_adjustment: any): Promise<any>;
+  getStockAdjustments(_branchId?: number, _status?: string): Promise<any[]>;
+  approveStockAdjustment(_id: number, _approvedBy: string): Promise<any>;
+  rejectStockAdjustment(_id: number, _approvedBy: string): Promise<any>;
+  getLowStockProducts(): Promise<any[]>;
+  getNonMovingProducts(_days: number): Promise<any[]>;
+  getPaymentBreakdown(_startDate?: Date, _endDate?: Date, _branchId?: number): Promise<any[]>;
+  getWriteoffs(_startDate?: Date, _endDate?: Date, _branchId?: number): Promise<any[]>;
+  exportSalesToCSV(_startDate?: Date, _endDate?: Date): Promise<string>;
+  exportInventoryToCSV(_branchId?: number): Promise<string>;
+  importProductsFromCSV(_csvContent: string): Promise<any>;
+  isMonthClosed(_branchId: number, _month: number, _year: number): Promise<boolean>;
+  closeMonth(_branchId: number, _month: number, _year: number, _userId: string): Promise<any>;
+  getExpenses(_options: any): Promise<any[]>;
+  createExpense(_expense: any): Promise<any>;
+  getAuditLogs(_options: any): Promise<any[]>;
+  createAuditLog(_log: any): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -67,15 +108,8 @@ export class DatabaseStorage implements IStorage {
   // Branches
   // =========================
   async getBranches(): Promise<Branch[]> {
-    try {
-      console.log("Fetching branches from database...");
-      const result = await db.select().from(branches);
-      console.log("Branches fetched:", result.length);
-      return result;
-    } catch (error) {
-      console.error("Error in getBranches:", error);
-      throw error;
-    }
+    const result = await db.select().from(branches);
+    return result;
   }
 
   async getWarehouseBranch(): Promise<Branch | undefined> {
@@ -116,9 +150,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(categories);
   }
 
-  async createCategory(
-    category: typeof categories.$inferInsert,
-  ): Promise<Category> {
+  async createCategory(category: typeof categories.$inferInsert): Promise<Category> {
     const result = await db.insert(categories).values(category).returning();
     return result[0];
   }
@@ -130,13 +162,11 @@ export class DatabaseStorage implements IStorage {
   // =========================
   // Products
   // =========================
-
-  // ✅ FIX: Drizzle leftJoin natijasini xavfsiz shape bilan olish
   async getProducts(
     categoryId?: number,
     search?: string,
   ): Promise<(Product & { category: Category | null })[]> {
-    const conditions = [];
+    const conditions: any[] = [];
 
     if (categoryId) {
       conditions.push(eq(products.categoryId, categoryId));
@@ -170,18 +200,14 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async createProduct(product: typeof products.$inferInsert): Promise<Product> {
-    const normalized = {
-      ...product,
-      // UI cost yuborsa ham qabul
-      costPrice: (product as any).costPrice ?? (product as any).cost,
+  async createProduct(productInput: typeof products.$inferInsert): Promise<Product> {
+    const normalized: any = {
+      ...productInput,
+      costPrice: (productInput as any).costPrice ?? (productInput as any).cost,
     };
+    delete normalized.cost;
 
-    const result = await db
-      .insert(products)
-      .values(normalized as any)
-      .returning();
-
+    const result = await db.insert(products).values(normalized).returning();
     return result[0];
   }
 
@@ -202,7 +228,7 @@ export class DatabaseStorage implements IStorage {
 
       const [after] = await tx
         .update(products)
-        .set(data)
+        .set(data as any)
         .where(eq(products.id, id))
         .returning();
 
@@ -240,20 +266,17 @@ export class DatabaseStorage implements IStorage {
   // =========================
   // Inventory
   // =========================
-
-  // ✅ FIX: Drizzle join natijasini xavfsiz shape bilan olish
   async getInventory(
     branchId?: number,
     search?: string,
   ): Promise<(Inventory & { product: Product | null; branch: Branch | null })[]> {
-    const conditions = [];
+    const conditions: any[] = [];
 
     if (branchId) {
       conditions.push(eq(inventory.branchId, branchId));
     }
 
     if (search) {
-      // search bo‘lsa product join bo‘lishi shart
       conditions.push(
         or(
           like(products.name, `%${search}%`),
@@ -284,16 +307,17 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async updateInventory(
-    productId: number,
-    branchId: number,
-    quantityChange: number,
-  ): Promise<void> {
+  async updateInventory(productId: number, branchId: number, quantityChange: number): Promise<void> {
     await db.transaction(async (tx) => {
       const [current] = await tx
         .select()
         .from(inventory)
-        .where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)))
+        .where(
+          and(
+            eq(inventory.productId, productId),
+            eq(inventory.branchId, branchId),
+          ),
+        )
         .limit(1);
 
       if (!current) {
@@ -306,7 +330,12 @@ export class DatabaseStorage implements IStorage {
       await tx
         .update(inventory)
         .set({ quantity: newQty })
-        .where(and(eq(inventory.productId, productId), eq(inventory.branchId, branchId)));
+        .where(
+          and(
+            eq(inventory.productId, productId),
+            eq(inventory.branchId, branchId),
+          ),
+        );
     });
   }
 
@@ -318,6 +347,51 @@ export class DatabaseStorage implements IStorage {
     _reason: string,
   ): Promise<void> {
     await this.updateInventory(productId, branchId, quantityChange);
+  }
+
+  // =========================
+  // Clients (✅ REAL DB)
+  // =========================
+  async getClients(search?: string): Promise<Client[]> {
+    if (!search || !search.trim()) {
+      return await db.select().from(clients);
+    }
+
+    const s = search.trim();
+    return await db
+      .select()
+      .from(clients)
+      .where(
+        or(
+          like(clients.firstName, `%${s}%`),
+          like(clients.lastName, `%${s}%`),
+          like(clients.phone, `%${s}%`),
+        ),
+      );
+  }
+
+  async getClient(id: number): Promise<Client | undefined> {
+    const [client] = await db.select().from(clients).where(eq(clients.id, id));
+    return client;
+  }
+
+  async createClient(clientInput: typeof clients.$inferInsert): Promise<Client> {
+    // birthDate: <input type="date" /> dan odatda "YYYY-MM-DD" keladi (date column uchun mos)
+    const result = await db.insert(clients).values(clientInput).returning();
+    return result[0];
+  }
+
+  async updateClient(
+    id: number,
+    data: Partial<typeof clients.$inferInsert>,
+  ): Promise<Client | undefined> {
+    const result = await db
+      .update(clients)
+      .set(data as any)
+      .where(eq(clients.id, id))
+      .returning();
+
+    return result[0];
   }
 
   // =========================
@@ -341,10 +415,7 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async updateUser(
-    id: string,
-    data: Partial<typeof users.$inferInsert>,
-  ): Promise<User> {
+  async updateUser(id: string, data: Partial<typeof users.$inferInsert>): Promise<User> {
     const result = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return result[0];
   }
@@ -372,39 +443,111 @@ export class DatabaseStorage implements IStorage {
   // =========================
   // Placeholder (qolganlari keyin)
   // =========================
-  async getShipments(_branchId?: number): Promise<any[]> { return []; }
-  async createShipment(_userId: string, _fromWarehouseId: number, _toBranchId: number, _items: any[]): Promise<any> { return {} as any; }
-  async receiveShipment(_shipmentId: number, _receivedItems: any[]): Promise<any> { return {} as any; }
-  async getClients(_search?: string): Promise<any[]> { return []; }
-  async getClient(_id: number): Promise<any> { return undefined; }
-  async createClient(_client: any): Promise<any> { return {} as any; }
-  async updateClient(_id: number, _data: any): Promise<any> { return {} as any; }
-  async addPrescription(_prescription: any): Promise<any> { return {} as any; }
-  async createSale(_userId: string, _input: any): Promise<any> { return {} as any; }
-  async getSale(_id: number): Promise<any> { return undefined; }
-  async getSales(_options: any): Promise<any[]> { return []; }
-  async updateSaleStatus(_id: number, _status: string): Promise<any> { return {} as any; }
-  async createPriceHistory(_entry: any): Promise<any> { return {} as any; }
-  async getPriceHistory(_productId: number): Promise<any[]> { return []; }
-  async createSalesPayment(_payment: any): Promise<any> { return {} as any; }
-  async getSalesPayments(_saleId: number): Promise<any[]> { return []; }
-  async createStockAdjustment(_adjustment: any): Promise<any> { return {} as any; }
-  async getStockAdjustments(_branchId?: number, _status?: string): Promise<any[]> { return []; }
-  async approveStockAdjustment(_id: number, _approvedBy: string): Promise<any> { return {} as any; }
-  async rejectStockAdjustment(_id: number, _approvedBy: string): Promise<any> { return {} as any; }
-  async getLowStockProducts(): Promise<any[]> { return []; }
-  async getNonMovingProducts(_days: number): Promise<any[]> { return []; }
-  async getPaymentBreakdown(_startDate?: Date, _endDate?: Date, _branchId?: number): Promise<any[]> { return []; }
-  async getWriteoffs(_startDate?: Date, _endDate?: Date, _branchId?: number): Promise<any[]> { return []; }
-  async exportSalesToCSV(_startDate?: Date, _endDate?: Date): Promise<string> { return ""; }
-  async exportInventoryToCSV(_branchId?: number): Promise<string> { return ""; }
-  async importProductsFromCSV(_csvContent: string): Promise<any> { return { success: false, message: "Not implemented" }; }
-  async isMonthClosed(_branchId: number, _month: number, _year: number): Promise<boolean> { return false; }
-  async closeMonth(_branchId: number, _month: number, _year: number, _userId: string): Promise<any> { return {} as any; }
-  async getExpenses(_options: any): Promise<any[]> { return []; }
-  async createExpense(_expense: any): Promise<any> { return {} as any; }
-  async getAuditLogs(_options: any): Promise<any[]> { return []; }
-  async createAuditLog(_log: any): Promise<any> { return {} as any; }
+  async getShipments(_branchId?: number): Promise<any[]> {
+    return [];
+  }
+  async createShipment(
+    _userId: string,
+    _fromWarehouseId: number,
+    _toBranchId: number,
+    _items: any[],
+  ): Promise<any> {
+    return {} as any;
+  }
+  async receiveShipment(_shipmentId: number, _receivedItems: any[]): Promise<any> {
+    return {} as any;
+  }
+  async addPrescription(_prescription: any): Promise<any> {
+    return {} as any;
+  }
+  async createSale(_userId: string, _input: any): Promise<any> {
+    return {} as any;
+  }
+  async getSale(_id: number): Promise<any> {
+    return undefined;
+  }
+  async getSales(_options: any): Promise<any[]> {
+    return [];
+  }
+  async updateSaleStatus(_id: number, _status: string): Promise<any> {
+    return {} as any;
+  }
+  async createPriceHistory(_entry: any): Promise<any> {
+    return {} as any;
+  }
+  async getPriceHistory(_productId: number): Promise<any[]> {
+    return [];
+  }
+  async createSalesPayment(_payment: any): Promise<any> {
+    return {} as any;
+  }
+  async getSalesPayments(_saleId: number): Promise<any[]> {
+    return [];
+  }
+  async createStockAdjustment(_adjustment: any): Promise<any> {
+    return {} as any;
+  }
+  async getStockAdjustments(_branchId?: number, _status?: string): Promise<any[]> {
+    return [];
+  }
+  async approveStockAdjustment(_id: number, _approvedBy: string): Promise<any> {
+    return {} as any;
+  }
+  async rejectStockAdjustment(_id: number, _approvedBy: string): Promise<any> {
+    return {} as any;
+  }
+  async getLowStockProducts(): Promise<any[]> {
+    return [];
+  }
+  async getNonMovingProducts(_days: number): Promise<any[]> {
+    return [];
+  }
+  async getPaymentBreakdown(
+    _startDate?: Date,
+    _endDate?: Date,
+    _branchId?: number,
+  ): Promise<any[]> {
+    return [];
+  }
+  async getWriteoffs(
+    _startDate?: Date,
+    _endDate?: Date,
+    _branchId?: number,
+  ): Promise<any[]> {
+    return [];
+  }
+  async exportSalesToCSV(_startDate?: Date, _endDate?: Date): Promise<string> {
+    return "";
+  }
+  async exportInventoryToCSV(_branchId?: number): Promise<string> {
+    return "";
+  }
+  async importProductsFromCSV(_csvContent: string): Promise<any> {
+    return { success: false, message: "Not implemented" };
+  }
+  async isMonthClosed(_branchId: number, _month: number, _year: number): Promise<boolean> {
+    return false;
+  }
+  async closeMonth(
+    _branchId: number,
+    _month: number,
+    _year: number,
+    _userId: string,
+  ): Promise<any> {
+    return {} as any;
+  }
+  async getExpenses(_options: any): Promise<any[]> {
+    return [];
+  }
+  async createExpense(_expense: any): Promise<any> {
+    return {} as any;
+  }
+  async getAuditLogs(_options: any): Promise<any[]> {
+    return [];
+  }
+  async createAuditLog(_log: any): Promise<any> {
+    return {} as any;
+  }
 }
 
 export const storage = new DatabaseStorage();
