@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage-simple";
 import { z } from "zod";
 import { setupAuth } from "./auth";
-import { insertBranchSchema, insertCategorySchema } from "@shared/schema-sqlite";
+import { insertBranchSchema, insertCategorySchema } from "@shared/schema";
 
 // RBAC Middleware
 function requireRole(roles: string[]) {
