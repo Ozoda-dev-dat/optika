@@ -1,25 +1,25 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express } from "express";
 import express from "express";
 import path from "path";
+import fs from "fs";
 
 export function serveStatic(app: Express) {
-  // Vite build: dist/public
+  // Vite config: outDir: "dist/public"
   const publicDir = path.resolve(process.cwd(), "dist", "public");
   const indexHtml = path.join(publicDir, "index.html");
 
-  // 1) Static assets
-  app.use(
-    express.static(publicDir, {
-      index: false, // index.html ni static o‘zi berib yubormasin, biz fallbackda beramiz
-    }),
-  );
+  // 1) Static assetlar (/assets/...) birinchi bo'lsin
+  app.use(express.static(publicDir));
 
-  // 2) SPA fallback (Express 5 uchun REGEX + fayllarni chetlab o‘tish)
-  app.get(/^(?!\/api\/).*/, (req: Request, res: Response, next: NextFunction) => {
-    // assets yoki faylga o‘xshagan path bo‘lsa (".js", ".css", ".png"...) fallback qilmang
-    if (req.path.startsWith("/assets/")) return next();
-    if (req.path.includes(".")) return next();
-
+  // 2) SPA fallback: faqat API bo'lmagan route'lar uchun
+  app.get(/^(?!\/api).*/, (_req, res) => {
+    if (!fs.existsSync(indexHtml)) {
+      // Render log'da chiqayotgan ENOENT shu yerda ushlanadi
+      return res.status(500).send(
+        `Client build topilmadi: ${indexHtml}\n` +
+          `Render Build Command'da "npm run build" ishlaganini tekshir.`
+      );
+    }
     return res.sendFile(indexHtml);
   });
 }
