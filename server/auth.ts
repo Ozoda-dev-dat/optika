@@ -4,8 +4,10 @@ import { Express } from "express";
 import session from "express-session";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage-simple";
-import { User as SelectUser } from "@shared/schema-sqlite";
+import { users } from "@shared/schema";
 import { db } from "./db";
+
+type SelectUser = typeof users.$inferSelect;
 
 declare global {
   namespace Express {
