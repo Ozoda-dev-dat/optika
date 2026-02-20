@@ -1,17 +1,32 @@
 import type { Express } from "express";
 import express from "express";
 import path from "path";
+import fs from "fs";
 
 export function serveStatic(app: Express) {
-  // Vite build natijasi: dist/index.html va dist/assets/...
-  const distDir = path.resolve(process.cwd(), "dist");
-  const indexHtml = path.join(distDir, "index.html");
+  const cwd = process.cwd();
 
-  // 1) Statik fayllar (assets, favicon, ...)
-  app.use(express.static(distDir));
+  // 1) Vite build qayerga chiqayotganini auto topamiz
+  const candidates = [
+    path.join(cwd, "dist", "public"), // sening loglarda shu chiqqan
+    path.join(cwd, "dist"),          // ba'zi setup'larda shu bo'ladi
+  ];
 
-  // 2) SPA fallback (Express 5 uchun "*" emas!)
-  // /api/... emas bo‘lgan hamma narsani index.html ga qaytaramiz
+  const publicDir = candidates.find((p) => fs.existsSync(path.join(p, "index.html")));
+  if (!publicDir) {
+    throw new Error(
+      `Static build not found. Tried: ${candidates
+        .map((p) => JSON.stringify(path.join(p, "index.html")))
+        .join(", ")}`
+    );
+  }
+
+  const indexHtml = path.join(publicDir, "index.html");
+
+  // 2) assets
+  app.use(express.static(publicDir));
+
+  // 3) SPA fallback (Express 5 compatible) - /api ni tegmaymiz
   app.get(/^\/(?!api).*/, (_req, res) => {
     res.sendFile(indexHtml);
   });
