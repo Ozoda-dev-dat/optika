@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import {
-  users, branches, products, inventory, categories,
+  users, branches, products, inventory, categories, priceHistory,
   type User, type Branch, type Product, type Inventory, type Category
-} from "@shared/schema-sqlite";
+} from "@shared/schema";
 import { db } from "./db";
 import { eq, like, and, sql, desc, sum, gte, lte, or } from "drizzle-orm";
 import { IAuthStorage } from "./replit_integrations/auth/storage";
@@ -80,31 +80,71 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Products
-  async getProducts(categoryId?: number, search?: string): Promise<(Product & { category: Category | null })[]> {
-    const conditions = [];
-    if (categoryId) conditions.push(eq(products.categoryId, categoryId));
-    if (search) conditions.push(or(like(products.name, `%${search}%`), like(products.sku, `%${search}%`)));
-
-    const query = db.select()
-      .from(products)
-      .leftJoin(categories, eq(products.categoryId, categories.id));
-
-    const results = conditions.length > 0 ? await query.where(and(...conditions)) : await query;
-    return results.map(r => ({ ...r.products, category: r.categories }));
-  }
-
 async createProduct(product: typeof products.$inferInsert): Promise<Product> {
-  const result = await db.insert(products).values({
+  const normalized = {
     ...product,
-    cost: (product as any).cost ?? (product as any).costPrice, // agar UI costPrice yuborsa ham qabul qilsin
-  } as any).returning();
+    costPrice: (product as any).costPrice ?? (product as any).cost, // UI cost yuborsa ham qabul
+  };
+
+  const result = await db.insert(products).values(normalized as any).returning();
   return result[0];
 }
 
-  async updateProduct(id: number, data: Partial<typeof products.$inferInsert>, changedByUserId: string, reason?: string): Promise<Product> {
-    const result = await db.update(products).set(data).where(eq(products.id, id)).returning();
-    return result[0];
-  }
+async updateProduct(
+  id: number,
+  data: Partial<typeof products.$inferInsert>,
+  changedByUserId: string,
+  reason?: string
+): Promise<Product> {
+  return await db.transaction(async (tx) => {
+    // 1) Oldingi holatni olamiz
+    const [before] = await tx
+      .select()
+      .from(products)
+      .where(eq(products.id, id))
+      .limit(1);
+
+    if (!before) {
+      throw new Error("Product not found");
+    }
+
+    // 2) Update qilamiz
+    const [after] = await tx
+      .update(products)
+      .set(data)
+      .where(eq(products.id, id))
+      .returning();
+
+    if (!after) {
+      throw new Error("Failed to update product");
+    }
+
+    // 3) Price/cost o‘zgarganini tekshiramiz
+    const beforePrice = String(before.price);
+    const afterPrice = String(after.price);
+
+    const beforeCost = String((before as any).costPrice);
+    const afterCost = String((after as any).costPrice);
+
+    const priceChanged = beforePrice !== afterPrice;
+    const costChanged = beforeCost !== afterCost;
+
+    // 4) Agar o‘zgargan bo‘lsa — priceHistory ga yozamiz
+    if (priceChanged || costChanged) {
+      await tx.insert(priceHistory).values({
+        productId: after.id,
+        oldPrice: beforePrice,
+        newPrice: afterPrice,
+        oldCost: beforeCost,
+        newCost: afterCost,
+        changedByUserId,
+        reason: reason ?? null,
+      } as any);
+    }
+
+    return after;
+  });
+}
 
   // Inventory
   async getInventory(branchId?: number, search?: string): Promise<(Inventory & { product: Product | null, branch: Branch | null })[]> {
