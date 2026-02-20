@@ -5,11 +5,11 @@ import path from "path";
 export function serveStatic(app: Express) {
   const publicDir = path.resolve(process.cwd(), "dist", "public");
 
-  // 1) Serve assets first
+  // 1) Static assets
   app.use(express.static(publicDir));
 
-  // 2) SPA fallback last
-  app.get("*", (_req, res) => {
+  // 2) SPA fallback (match everything)
+  app.get(/.*/, (_req, res) => {
     res.sendFile(path.join(publicDir, "index.html"));
   });
 }
