@@ -1,33 +1,25 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import express from "express";
 import path from "path";
-import fs from "fs";
 
 export function serveStatic(app: Express) {
-  const cwd = process.cwd();
-
-  // 1) Vite build qayerga chiqayotganini auto topamiz
-  const candidates = [
-    path.join(cwd, "dist", "public"), // sening loglarda shu chiqqan
-    path.join(cwd, "dist"),          // ba'zi setup'larda shu bo'ladi
-  ];
-
-  const publicDir = candidates.find((p) => fs.existsSync(path.join(p, "index.html")));
-  if (!publicDir) {
-    throw new Error(
-      `Static build not found. Tried: ${candidates
-        .map((p) => JSON.stringify(path.join(p, "index.html")))
-        .join(", ")}`
-    );
-  }
-
+  // Vite build: dist/public
+  const publicDir = path.resolve(process.cwd(), "dist", "public");
   const indexHtml = path.join(publicDir, "index.html");
 
-  // 2) assets
-  app.use(express.static(publicDir));
+  // 1) Static assets
+  app.use(
+    express.static(publicDir, {
+      index: false, // index.html ni static o‘zi berib yubormasin, biz fallbackda beramiz
+    }),
+  );
 
-  // 3) SPA fallback (Express 5 compatible) - /api ni tegmaymiz
-  app.get(/^\/(?!api).*/, (_req, res) => {
-    res.sendFile(indexHtml);
+  // 2) SPA fallback (Express 5 uchun REGEX + fayllarni chetlab o‘tish)
+  app.get(/^(?!\/api\/).*/, (req: Request, res: Response, next: NextFunction) => {
+    // assets yoki faylga o‘xshagan path bo‘lsa (".js", ".css", ".png"...) fallback qilmang
+    if (req.path.startsWith("/assets/")) return next();
+    if (req.path.includes(".")) return next();
+
+    return res.sendFile(indexHtml);
   });
 }
