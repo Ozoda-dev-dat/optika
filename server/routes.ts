@@ -1,3 +1,4 @@
+// server/routes.ts
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage-simple";
@@ -7,12 +8,14 @@ import {
   insertBranchSchema,
   insertCategorySchema,
   insertProductSchema,
+  insertClientSchema,
 } from "@shared/schema";
 
+// -------------------------
 // RBAC Middleware
+// -------------------------
 function requireRole(roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
-    // passport qo'shgandan keyin req.isAuthenticated bo'ladi
     if (!req.isAuthenticated || !req.isAuthenticated()) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -29,7 +32,9 @@ function requireRole(roles: string[]) {
   };
 }
 
+// -------------------------
 // Validation middleware
+// -------------------------
 function validateInput<T>(schema: z.ZodSchema<T>) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -47,7 +52,10 @@ function validateInput<T>(schema: z.ZodSchema<T>) {
   };
 }
 
-export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+export async function registerRoutes(
+  httpServer: Server,
+  app: Express,
+): Promise<Server> {
   // Auth Setup
   setupAuth(app);
 
@@ -61,9 +69,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // -------------------------
   app.get("/api/branches", async (_req, res) => {
     try {
-      console.log("GET /api/branches called");
       const allBranches = await storage.getBranches();
-      console.log("Branches retrieved:", allBranches.length);
       res.json(allBranches);
     } catch (error) {
       console.error("Error in GET /api/branches:", error);
@@ -106,9 +112,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // -------------------------
   app.get("/api/categories", async (_req, res) => {
     try {
-      console.log("GET /api/categories called");
       const cats = await storage.getCategories();
-      console.log("Categories retrieved:", cats.length);
       res.json(cats);
     } catch (error) {
       console.error("Error in GET /api/categories:", error);
@@ -166,87 +170,76 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // CREATE product
-  app.post(
-    "/api/products",
-    requireRole(["admin"]),
-    async (req, res) => {
-      try {
-        // insert schema bilan tekshiramiz
-        const data = insertProductSchema.parse(req.body);
+  app.post("/api/products", requireRole(["admin"]), async (req, res) => {
+    try {
+      const data = insertProductSchema.parse(req.body);
 
-        // cost/costPrice normalize (UI cost yuborsa ham ishlasin)
-        const normalized: any = {
-          ...data,
-          costPrice: (data as any).costPrice ?? (data as any).cost,
-        };
-        delete normalized.cost;
+      const normalized: any = {
+        ...data,
+        costPrice: (data as any).costPrice ?? (data as any).cost,
+      };
+      delete normalized.cost;
 
-        const created = await storage.createProduct(normalized);
-        res.json(created);
-      } catch (error: any) {
-        console.error("Error in POST /api/products:", error);
+      const created = await storage.createProduct(normalized);
+      res.json(created);
+    } catch (error: any) {
+      console.error("Error in POST /api/products:", error);
 
-        if (error?.name === "ZodError") {
-          return res.status(400).json({
-            message: "Validation failed",
-            errors: error.errors,
-          });
-        }
-
-        res.status(500).json({ message: "Failed to create product" });
+      if (error?.name === "ZodError") {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
       }
-    },
-  );
+
+      res.status(500).json({ message: "Failed to create product" });
+    }
+  });
 
   // UPDATE product
-  app.put(
-    "/api/products/:id",
-    requireRole(["admin"]),
-    async (req, res) => {
-      try {
-        const id = Number(req.params.id);
-        if (!Number.isFinite(id)) {
-          return res.status(400).json({ message: "Invalid product id" });
-        }
-
-        // update schema: partial
-        const updateSchema = insertProductSchema.partial();
-        const data = updateSchema.parse(req.body);
-
-        // @ts-ignore
-        const userId = req.user?.id as string | undefined;
-        if (!userId) {
-          return res.status(401).json({ message: "Unauthorized" });
-        }
-
-        const normalized: any = {
-          ...data,
-          costPrice: (data as any).costPrice ?? (data as any).cost,
-        };
-        delete normalized.cost;
-
-        const updated = await storage.updateProduct(
-          id,
-          normalized,
-          userId,
-          (req.body as any)?.reason,
-        );
-
-        res.json(updated);
-      } catch (error: any) {
-        console.error("Error in PUT /api/products/:id:", error);
-
-        if (error?.name === "ZodError") {
-          return res.status(400).json({
-            message: "Validation failed",
-            errors: error.errors,
-          });
-        }
-
-        res.status(500).json({ message: "Failed to update product" });
+  app.put("/api/products/:id", requireRole(["admin"]), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ message: "Invalid product id" });
       }
-    },
-  );
+
+      const updateSchema = insertProductSchema.partial();
+      const data = updateSchema.parse(req.body);
+
+      // @ts-ignore
+      const userId = req.user?.id as string | undefined;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const normalized: any = {
+        ...data,
+        costPrice: (data as any).costPrice ?? (data as any).cost,
+      };
+      delete normalized.cost;
+
+      const updated = await storage.updateProduct(
+        id,
+        normalized,
+        userId,
+        (req.body as any)?.reason,
+      );
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error in PUT /api/products/:id:", error);
+
+      if (error?.name === "ZodError") {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+
+      res.status(500).json({ message: "Failed to update product" });
+    }
+  });
 
   // DELETE product
   app.delete("/api/products/:id", requireRole(["admin"]), async (req, res) => {
@@ -261,6 +254,87 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error("Error in DELETE /api/products/:id:", error);
       res.status(500).json({ message: "Failed to delete product" });
+    }
+  });
+
+  // -------------------------
+  // Clients
+  // -------------------------
+  app.get("/api/clients", async (req, res) => {
+    try {
+      const { search } = req.query;
+
+      const list = await storage.getClients(
+        typeof search === "string" ? search : undefined,
+      );
+
+      res.json(list);
+    } catch (error) {
+      console.error("Error in GET /api/clients:", error);
+      res.status(500).json({ message: "Failed to fetch clients" });
+    }
+  });
+
+  app.get("/api/clients/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ message: "Invalid client id" });
+      }
+
+      const client = await storage.getClient(id);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+
+      res.json(client);
+    } catch (error) {
+      console.error("Error in GET /api/clients/:id:", error);
+      res.status(500).json({ message: "Failed to fetch client" });
+    }
+  });
+
+  app.post("/api/clients", requireRole(["admin"]), async (req, res) => {
+    try {
+      const data = insertClientSchema.parse(req.body);
+      const created = await storage.createClient(data);
+      res.json(created);
+    } catch (error: any) {
+      console.error("Error in POST /api/clients:", error);
+
+      if (error?.name === "ZodError") {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+
+      res.status(500).json({ message: "Failed to create client" });
+    }
+  });
+
+  app.put("/api/clients/:id", requireRole(["admin"]), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ message: "Invalid client id" });
+      }
+
+      const data = insertClientSchema.partial().parse(req.body);
+      const updated = await storage.updateClient(id, data);
+
+      if (!updated) return res.status(404).json({ message: "Client not found" });
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error in PUT /api/clients/:id:", error);
+
+      if (error?.name === "ZodError") {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+
+      res.status(500).json({ message: "Failed to update client" });
     }
   });
 
