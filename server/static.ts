@@ -1,22 +1,29 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express } from "express";
 import express from "express";
 import path from "path";
 
 export function serveStatic(app: Express) {
   const publicDir = path.resolve(process.cwd(), "dist", "public");
+  const assetsDir = path.join(publicDir, "assets");
 
-  // 1) Static fayllar (assets) birinchi bo‘lib servis qilinsin
+  // 1) Assets'ni alohida serve qilamiz (topilmasa 404 qaytadi, index.html emas)
   app.use(
-    express.static(publicDir, {
-      index: false, // index.html ni static avtomatik berib yubormasin
+    "/assets",
+    express.static(assetsDir, {
+      fallthrough: false, // MUHIM: topilmasa keyingi route'ga o'tmaydi
     }),
   );
 
-  // 2) SPA fallback:
-  // - /api ga tegmasin
-  // - va real file (nuqta bor) bo‘lsa index.html qaytarmasin
-  app.get(/^\/(?!api(?:\/|$)).*/, (req: Request, res: Response, next: NextFunction) => {
-    if (req.path.includes(".")) return next(); // masalan: /assets/index-xxx.js
-    return res.sendFile(path.join(publicDir, "index.html"));
+  // 2) Qolgan static fayllar (favicon, robots.txt, etc.)
+  app.use(
+    express.static(publicDir, {
+      index: false, // index.html ni fallback route beradi
+    }),
+  );
+
+  // 3) API'ni umuman tegmaymiz
+  // 4) SPA fallback (Express 5 uchun "*" emas, REGEX ishlatamiz)
+  app.get(/^(?!\/api\/).*/, (_req, res) => {
+    res.sendFile(path.join(publicDir, "index.html"));
   });
 }
